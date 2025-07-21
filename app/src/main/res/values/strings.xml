@@ -1,0 +1,22 @@
+<resources>
+    <string name="app_name">SVCE Attendance Prototype</string>
+    <string name="login_screen">Login Screen</string>
+    <string name="login_as">Login as: %1$s</string>
+    <string name="college_email">College Email</string>
+    <string name="password">Password</string>
+    <string name="roll_number">Roll Number</string>
+    <string name="login">Login</string>
+    <string name="sign_up">Sign up / Create a new account</string>
+    <string name="signup_screen">Signup Screen</string>
+    <string name="signup">Sign Up</string>
+    <string name="signup_as">Sign up as: %1$s</string>
+
+    <string name="home_as">Home as: %1$s</string>
+    <string name="profile">Profile</string>
+    <string name="home_screen">Home</string>
+    <string name="take_attendance">Take Attendance</string>
+    <string name="attendance_as">Attendance as: %1$s</string>
+
+
+
+</resources>

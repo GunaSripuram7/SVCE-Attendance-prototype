@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:padding="32dp"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- Title: Sign up as Teacher/Student -->
+    <TextView
+        android:id="@+id/tvSignupRole"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/signup_screen"
+        android:textSize="24sp"
+        android:layout_marginBottom="24dp" />
+
+    <!-- Email Input -->
+    <EditText
+        android:id="@+id/etSignupEmail"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/college_email"
+        android:inputType="textEmailAddress"
+        android:minHeight="48dp"
+        android:autofillHints="emailAddress" />
+
+    <!-- Password Input -->
+    <EditText
+        android:id="@+id/etSignupPassword"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/password"
+        android:inputType="textPassword"
+        android:minHeight="48dp"
+        android:autofillHints="password"
+        android:layout_marginTop="16dp" />
+
+    <!-- Roll Number Input (student only, shown by code) -->
+    <EditText
+        android:id="@+id/etSignupRollNumber"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/roll_number"
+        android:inputType="text"
+        android:minHeight="48dp"
+        android:autofillHints="username"
+        android:layout_marginTop="16dp"
+        android:visibility="gone" />
+
+    <!-- Signup Button -->
+    <Button
+        android:id="@+id/btnSignup"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/signup"
+        android:minHeight="48dp"
+        android:layout_marginTop="24dp"/>
+
+</LinearLayout>

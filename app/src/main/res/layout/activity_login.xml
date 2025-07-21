@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:padding="32dp"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- Title -->
+    <TextView
+        android:id="@+id/tvRole"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/login_screen"
+        android:textSize="24sp"
+        android:layout_marginBottom="24dp" />
+
+    <!-- Email Input -->
+    <EditText
+        android:id="@+id/etEmail"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/college_email"
+        android:autofillHints="emailAddress"
+        android:inputType="textEmailAddress"
+        android:minHeight="48dp"
+
+        />
+
+    <!-- Password Input -->
+    <EditText
+        android:id="@+id/etPassword"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/password"
+        android:autofillHints="password"
+        android:inputType="textPassword"
+        android:layout_marginTop="16dp"
+        android:minHeight="48dp"
+
+        />
+
+    <!-- Roll Number (Student Only, set to GONE in code for teacher) -->
+    <EditText
+        android:id="@+id/etRollNumber"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/roll_number"
+        android:inputType="text"
+        android:autofillHints="username"
+        android:layout_marginTop="16dp"
+        android:visibility="gone"
+        android:minHeight="48dp"
+
+        />
+
+    <!-- Login Button -->
+    <Button
+        android:id="@+id/btnLogin"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/login"
+        android:layout_marginTop="24dp"
+        android:minHeight="48dp"
+        />
+
+    <!-- Sign-Up Link -->
+    <TextView
+        android:id="@+id/tvSignUp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/sign_up"
+        android:textColor="@android:color/holo_blue_dark"
+        android:layout_marginTop="16dp"
+        android:textSize="16sp"
+        android:minHeight="48dp"
+        />
+</LinearLayout>
