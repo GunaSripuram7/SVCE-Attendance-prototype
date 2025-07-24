@@ -9,7 +9,6 @@ import android.widget.ArrayAdapter
 import com.google.gson.Gson
 import com.svce.attendance.utils.AttendanceSession
 
-
 class SessionDetailActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -22,6 +21,16 @@ class SessionDetailActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.tvDetailCount).text = "${session.rollNumbers.size} present"
 
         val listView = findViewById<ListView>(R.id.listRollDetails)
-        listView.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, session.rollNumbers)
+
+        // Add ticks for confirmed students in the attendance session
+        val rollDisplayList = session.rollNumbers.map { roll ->
+            if (session.confirmations[roll] == true) "$roll ✔" else roll
+        }
+
+        listView.adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_list_item_1,
+            rollDisplayList
+        )
     }
 }

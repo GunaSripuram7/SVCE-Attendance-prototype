@@ -28,11 +28,60 @@
         android:text="Stop Attendance"
         android:layout_marginTop="16dp"/>
 
+    <TextView
+        android:id="@+id/tvGrace"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textSize="18sp"
+        android:layout_marginTop="12dp"/>
+
     <ListView
         android:id="@+id/listRolls"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:layout_marginTop="24dp"/>
+
+    <!-- Ping button is no longer used, keep it hidden for backward compatibility -->
+    <Button
+        android:id="@+id/btnPing"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Ping Students"
+        android:visibility="gone"
+        android:layout_marginTop="16dp"/>
+
+    <!-- Confirm button remains hidden as confirmation is automatic now -->
+    <Button
+        android:id="@+id/btnConfirm"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Confirm"
+        android:visibility="gone"/>
+
+    <!-- TextView to show 10-second broadcast countdown during confirmation phase -->
+    <TextView
+        android:id="@+id/tvBroadcastCountdown"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Broadcasting confirmation: 10"
+        android:textSize="20sp"
+        android:textColor="@android:color/holo_green_dark"
+        android:layout_marginTop="16dp"
+        android:visibility="gone"
+        android:layout_gravity="center"/>
+
+    <!-- Optional: Student confirmation status display -->
+    <TextView
+        android:id="@+id/tvStudentConfirmation"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Attendance Confirmed!"
+        android:textSize="18sp"
+        android:textColor="@android:color/holo_green_dark"
+        android:layout_marginTop="16dp"
+        android:visibility="gone"
+        android:layout_gravity="center"/>
 
 </LinearLayout>

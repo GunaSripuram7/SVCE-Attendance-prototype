@@ -22,5 +22,14 @@
             android:text="75 present"
             android:textSize="14sp"
             android:layout_marginTop="4dp"/>
+
+        <TextView
+            android:id="@+id/tvRolls"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="14sp"
+            android:layout_marginTop="8dp"
+            android:text="Rolls will be shown here" />
+
     </LinearLayout>
 </androidx.cardview.widget.CardView>

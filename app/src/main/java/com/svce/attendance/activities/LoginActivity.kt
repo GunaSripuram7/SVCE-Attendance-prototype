@@ -33,11 +33,13 @@ class LoginActivity : AppCompatActivity() {
             // For now, show a toast (replace with real authentication later)
             Toast.makeText(this, "Login clicked for $role", Toast.LENGTH_SHORT).show()
 
-            // Go to HomeActivity after login
+            // Go to HomeActivity after login, clearing back stack so user can't return to Login or RoleSelection
             val intent = Intent(this, HomeActivity::class.java)
             intent.putExtra("role", role)
+            // Use intent flags AND finishAffinity for best navigation hygiene
+            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
             startActivity(intent)
-            finish() // Optional: remove from back stack
+            finishAffinity() // This finishes the current and all parent activities (including Role Selection)
         }
 
         tvSignUp.setOnClickListener {
