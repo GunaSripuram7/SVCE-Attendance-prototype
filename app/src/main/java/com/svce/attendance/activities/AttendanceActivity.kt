@@ -3,7 +3,6 @@ package com.svce.attendance.activities
 import com.svce.attendance.ble.BleAdvertiserHelper
 import com.svce.attendance.ble.BleScannerHelper
 import android.Manifest
-import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.*
@@ -17,6 +16,17 @@ import android.text.InputFilter
 import java.util.*
 import android.view.View
 import android.util.Log
+import android.os.CountDownTimer
+import androidx.appcompat.app.AlertDialog
+import com.opencsv.CSVReader
+import com.opencsv.CSVWriter
+import java.io.File
+import java.io.FileReader
+import java.io.FileWriter
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import android.widget.ProgressBar
 
 class AttendanceActivity : AppCompatActivity() {
 
@@ -37,9 +47,11 @@ class AttendanceActivity : AppCompatActivity() {
     private lateinit var tvBroadcastCountdown: TextView
 
     private var studentRollNumber: String? = null
-
+    private var broadcastTimer: CountDownTimer? = null
     // --- TRACK CONFIRMATIONS (student side will maintain locally) ---
     private val confirmations = mutableMapOf<String, Boolean>()
+
+    private lateinit var assignedRolls: Set<String>
 
     private val blePermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         arrayOf(
@@ -59,7 +71,7 @@ class AttendanceActivity : AppCompatActivity() {
     // For teacher advertising cycle
     private var advertiseIndex = 0
     private val advertiseHandler = Handler(Looper.getMainLooper())
-    private val advertiseInterval = 500L // 500ms per roll number
+    private val advertiseInterval = 300L
 
     private val advertiseRunnable = object : Runnable {
         override fun run() {
@@ -86,6 +98,11 @@ class AttendanceActivity : AppCompatActivity() {
         val role = intent.getStringExtra("role") ?: "Unknown"
         val tvAttendanceRole = findViewById<TextView>(R.id.tvAttendanceRole)
         tvAttendanceRole.text = getString(R.string.attendance_as, role)
+
+        // Load assigned rolls if teacher
+        if (role == "teacher") {
+            loadAssignedRollsCsv()
+        }
 
         btnStart = findViewById(R.id.btnStart)
         btnStop = findViewById(R.id.btnStop)
@@ -139,10 +156,12 @@ class AttendanceActivity : AppCompatActivity() {
                 bleScannerHelper?.startScan(
                     onDeviceFound = { payload ->
                         runOnUiThread {
-                            // Teacher listens for roll numbers - no CONFIRM processing as automatic now
-                            liveRollNumbers.add(payload)
-                            if (recordFinalList) finalRollNumbers.add(payload)
-                            updateRollList()
+                            // Filter: Only add if it's an assigned roll number
+                            if (assignedRolls.contains(payload)) {
+                                liveRollNumbers.add(payload)
+                                if (recordFinalList) finalRollNumbers.add(payload)
+                                updateRollList()
+                            }
                         }
                     },
                     onScanFailure = { code ->
@@ -234,27 +253,60 @@ class AttendanceActivity : AppCompatActivity() {
         updateRollList()
     }
 
+    private fun loadAssignedRollsCsv() {
+        val mentorEmail = intent.getStringExtra("email") ?: return
+        val file = File(filesDir, "rolls/$mentorEmail.csv")
+        assignedRolls = try {
+            CSVReader(FileReader(file)).use { reader ->
+                reader.readAll().drop(1).mapNotNull { it.getOrNull(0) }.toSet()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptySet()
+        }
+    }
+
     private fun startBroadcastConfirmation() {
+        // Ensure the advertiser helper exists
         if (bleAdvertiserHelper == null) {
             bleAdvertiserHelper = BleAdvertiserHelper(this, serviceUuid)
         }
 
+        // Show countdown UI and begin cycling roll-number adverts
         tvBroadcastCountdown.visibility = View.VISIBLE
         advertiseIndex = 0
         advertiseHandler.post(advertiseRunnable)
 
-        object : CountDownTimer(10_000, 1000) {
+        // 30-second confirmation window with progress bar update
+        broadcastTimer = object : CountDownTimer(30_000, 1_000) {
             override fun onTick(millisUntilFinished: Long) {
-                val secondsRemaining = (millisUntilFinished / 1000) + 1
-                tvBroadcastCountdown.text = "Broadcasting confirmation: $secondsRemaining"
+                val secondsRemaining = (millisUntilFinished / 1_000).toInt()
+                val progress = 30 - secondsRemaining
+
+                tvBroadcastCountdown.text = getString(R.string.broadcast_countdown, secondsRemaining)
+                findViewById<ProgressBar>(R.id.progressBroadcast)?.let {
+                    it.progress = progress
+                    it.visibility = View.VISIBLE
+                }
             }
 
             override fun onFinish() {
                 advertiseHandler.removeCallbacks(advertiseRunnable)
                 stopAdvertising()
                 tvBroadcastCountdown.visibility = View.GONE
+                findViewById<ProgressBar>(R.id.progressBroadcast)?.visibility = View.GONE
                 saveAttendanceSession()
-                Toast.makeText(this@AttendanceActivity, "Attendance session saved!", Toast.LENGTH_SHORT).show()
+
+                // 4) Append the new attendance column to the teacher’s CSV
+                appendAttendanceColumn(
+                    mentorEmail    = intent.getStringExtra("email")!!,
+                    confirmedList  = confirmations.keys
+                )
+                Toast.makeText(
+                    this@AttendanceActivity,
+                    "Attendance session saved!",
+                    Toast.LENGTH_SHORT
+                ).show()
             }
         }.start()
     }
@@ -277,7 +329,7 @@ class AttendanceActivity : AppCompatActivity() {
         if (finalRollNumbers.isEmpty()) return
 
         val now = System.currentTimeMillis()
-        val format = java.text.SimpleDateFormat("dd MMM yyyy, hh:mm a", java.util.Locale.getDefault())
+        val format = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
         confirmations.clear()
         finalRollNumbers.forEach { confirmations[it] = true } // All final rolls confirmed by implicit broadcast
         val session = com.svce.attendance.utils.AttendanceSession(
@@ -289,7 +341,7 @@ class AttendanceActivity : AppCompatActivity() {
         com.svce.attendance.utils.SessionStore.saveSession(this@AttendanceActivity, session)
     }
 
-    private fun showGraceDialog(durationSeconds: Int = 5, onFinish: () -> Unit) {
+    private fun showGraceDialog(durationSeconds: Int, onFinish: () -> Unit) {
         val dialogView = layoutInflater.inflate(R.layout.dialog_grace_countdown, null)
         val tvCountdown = dialogView.findViewById<TextView>(R.id.tvCountdown)
         val alertDialog = AlertDialog.Builder(this)
@@ -375,9 +427,38 @@ class AttendanceActivity : AppCompatActivity() {
     }
 
     private fun showStudentConfirmationUI() {
-        // You can update your UI here for student confirmation, e.g., a Toast or green tick
-        Toast.makeText(this, "Attendance Confirmed!", Toast.LENGTH_SHORT).show()
-        // You can also update a UI component or trigger animation if you want
+        // Find your roll number safely
+        val roll = studentRollNumber ?: return
+
+        // Build and show an AlertDialog instead of a Toast
+        AlertDialog.Builder(this)
+            .setTitle("Attendance Confirmed")
+            .setMessage("Your attendance has been confirmed!\nRoll Number: $roll")
+            .setCancelable(false)
+            .setPositiveButton("OK") { dialog, _ ->
+                dialog.dismiss()
+            }
+            .show()
     }
 
+    /**
+     * Append a new column (timestamp + P/A) to the teacher’s CSV file.
+     */
+    private fun appendAttendanceColumn(mentorEmail: String, confirmedList: Set<String>) {
+        val file = File(filesDir, "rolls/$mentorEmail.csv")
+        val all = CSVReader(FileReader(file)).readAll()
+        CSVWriter(FileWriter(file)).use { writer ->
+            val now = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault()).format(Date())
+            all[0] = all[0] + arrayOf(now)
+            val updated = mutableListOf<Array<String>>().apply {
+                add(all[0])
+                for (i in 1 until all.size) {
+                    val roll = all[i][0]
+                    val status = if (confirmedList.contains(roll)) "P" else "A"
+                    add(all[i] + arrayOf(status))
+                }
+            }
+            writer.writeAll(updated)
+        }
+    }
 }

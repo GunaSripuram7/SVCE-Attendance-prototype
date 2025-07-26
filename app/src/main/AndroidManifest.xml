@@ -51,6 +51,7 @@
             android:exported="false"/>
         <activity android:name=".activities.SessionDetailActivity"
             android:exported="false"/>
+        <activity android:name=".activities.PresentStudentsActivity" />
 
     </application>
 </manifest>
