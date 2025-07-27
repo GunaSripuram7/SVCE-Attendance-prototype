@@ -23,7 +23,18 @@ class BleScannerHelper(
     private var scanner: BluetoothLeScanner? = null
     private var scanCallback: ScanCallback? = null
 
-    fun startScan(onDeviceFound: (roll: String) -> Unit, onScanFailure: (Int) -> Unit = {}) {
+    /**
+     * Start scanning for BLE devices. This version handles both integer codes and string payloads.
+     * @param onDeviceFound Callback that receives an integer bleCode (from a student).
+     * @param onPayloadFound Callback that receives a string payload (from a teacher).
+     * @param onScanFailure Callback on failure with an error code.
+     */
+    // CHANGED: The signature now accepts two different callbacks for the two data types.
+    fun startScan(
+        onDeviceFound: (bleCode: Int) -> Unit,
+        onPayloadFound: (payload: String) -> Unit,
+        onScanFailure: (Int) -> Unit = {}
+    ) {
         val hasBleScanPermission = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
             ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED
         } else {
@@ -31,7 +42,8 @@ class BleScannerHelper(
         }
 
         if (!hasBleScanPermission) {
-            onScanFailure(-1)
+            Log.e("BleScannerHelper", "BLE Scan permission not granted.")
+            onScanFailure(-1) // Use a specific code for permission failure
             return
         }
 
@@ -46,24 +58,40 @@ class BleScannerHelper(
             val setting = ScanSettings.Builder()
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
                 .build()
+
             scanCallback = object : ScanCallback() {
                 override fun onScanResult(callbackType: Int, result: ScanResult?) {
                     result?.scanRecord?.getServiceData(ParcelUuid(serviceUuid))?.let { data ->
-                        val roll = data.toString(Charsets.UTF_8)
-                        Log.d("BleScannerHelper", "Got BLE: $roll")
-                        Handler(Looper.getMainLooper()).post {
-                            onDeviceFound(roll)
+                        if (data.isEmpty()) return@let
+
+                        // CHANGED: Check payload length to decide how to parse it
+                        if (data.size == 1) {
+                            // It's a single-byte integer (bleCode from a student)
+                            // Use "and 0xFF" to treat the byte as unsigned (0-255)
+                            val receivedBleCode = data[0].toInt() and 0xFF
+                            Log.d("BleScannerHelper", "Got BLE code: $receivedBleCode")
+                            Handler(Looper.getMainLooper()).post {
+                                onDeviceFound(receivedBleCode)
+                            }
+                        } else {
+                            // It's a string payload (rollNumber from a teacher)
+                            val receivedPayload = data.toString(Charsets.UTF_8)
+                            Log.d("BleScannerHelper", "Got BLE payload: $receivedPayload")
+                            Handler(Looper.getMainLooper()).post {
+                                onPayloadFound(receivedPayload)
+                            }
                         }
                     }
                 }
 
                 override fun onScanFailed(errorCode: Int) {
+                    Log.e("BleScannerHelper", "BLE scan failed with error code: $errorCode")
                     onScanFailure(errorCode)
                 }
             }
-
             scanner?.startScan(listOf(filter), setting, scanCallback)
         } catch (e: SecurityException) {
+            Log.e("BleScannerHelper", "SecurityException during scan start.", e)
             e.printStackTrace()
             onScanFailure(-1)
         }
@@ -73,6 +101,7 @@ class BleScannerHelper(
         try {
             scanner?.stopScan(scanCallback)
         } catch (e: SecurityException) {
+            Log.e("BleScannerHelper", "SecurityException during scan stop.", e)
             e.printStackTrace()
         }
         scanCallback = null

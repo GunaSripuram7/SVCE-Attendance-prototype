@@ -16,44 +16,37 @@
         android:textSize="24sp"
         android:layout_marginBottom="24dp" />
 
-    <!-- Email Input -->
+    <!-- Email Input (FOR TEACHER) -->
+    <!-- This MUST exist in the XML for findViewById to work. -->
     <EditText
         android:id="@+id/etEmail"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:hint="@string/college_email"
-        android:autofillHints="emailAddress"
         android:inputType="textEmailAddress"
         android:minHeight="48dp"
+        android:visibility="gone" /> <!-- Starts hidden -->
 
-        />
-
-    <!-- Password Input -->
-    <EditText
-        android:id="@+id/etPassword"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="@string/password"
-        android:autofillHints="password"
-        android:inputType="textPassword"
-        android:layout_marginTop="16dp"
-        android:minHeight="48dp"
-
-        />
-
-    <!-- Roll Number (Student Only, set to GONE in code for teacher) -->
+    <!-- Roll Number Input (FOR STUDENT) -->
     <EditText
         android:id="@+id/etRollNumber"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:hint="@string/roll_number"
         android:inputType="text"
-        android:autofillHints="username"
         android:layout_marginTop="16dp"
-        android:visibility="gone"
         android:minHeight="48dp"
+        android:visibility="gone" /> <!-- Starts hidden -->
 
-        />
+    <!-- Password Input (FOR BOTH) -->
+    <EditText
+        android:id="@+id/etPassword"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/password"
+        android:inputType="textPassword"
+        android:layout_marginTop="16dp"
+        android:minHeight="48dp" />
 
     <!-- Login Button -->
     <Button
@@ -61,9 +54,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="@string/login"
-        android:layout_marginTop="24dp"
-        android:minHeight="48dp"
-        />
+        android:layout_marginTop="24dp" />
 
     <!-- Sign-Up Link -->
     <TextView
@@ -72,8 +63,5 @@
         android:layout_height="wrap_content"
         android:text="@string/sign_up"
         android:textColor="@android:color/holo_blue_dark"
-        android:layout_marginTop="16dp"
-        android:textSize="16sp"
-        android:minHeight="48dp"
-        />
+        android:layout_marginTop="16dp" />
 </LinearLayout>
