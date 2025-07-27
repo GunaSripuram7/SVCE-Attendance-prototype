@@ -15,6 +15,7 @@ class SessionAdapter(
     class SessionViewHolder(val view: View) : RecyclerView.ViewHolder(view) {
         val tvDate: TextView = view.findViewById(R.id.tvDate)
         val tvCount: TextView = view.findViewById(R.id.tvCount)
+        val tvRolls: TextView = view.findViewById(R.id.tvRolls)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): SessionViewHolder {
@@ -27,6 +28,14 @@ class SessionAdapter(
         val session = sessions[position]
         holder.tvDate.text = session.formattedTime
         holder.tvCount.text = "${session.rollNumbers.size} present"
+
+        // Use a non-null confirmations map; safe for old or new sessions
+        val confirmations = session.confirmations ?: emptyMap()
+        val rollListWithTicks = session.rollNumbers.joinToString(", ") { roll ->
+            if (confirmations[roll] == true) "$roll ✔" else roll
+        }
+        holder.tvRolls.text = rollListWithTicks
+
         holder.view.setOnClickListener { onItemClick(session) }
     }
 

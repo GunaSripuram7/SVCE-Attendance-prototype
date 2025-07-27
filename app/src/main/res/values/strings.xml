@@ -16,7 +16,13 @@
     <string name="home_screen">Home</string>
     <string name="take_attendance">Take Attendance</string>
     <string name="attendance_as">Attendance as: %1$s</string>
-
-
+    <string name="finalizing_in_seconds">Finalizing in %1$d seconds...</string>
+    <string name="broadcast_countdown">Broadcasting confirmation: %1$d</string>
+    <string name="present_count">Present: %1$d</string>
+    <string name="logout">Logout</string>
 
 </resources>
+
+
+
+

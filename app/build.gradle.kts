@@ -45,5 +45,6 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
-
+    // CSV reading/writing library
+    implementation("com.opencsv:opencsv:5.5.2")
 }
