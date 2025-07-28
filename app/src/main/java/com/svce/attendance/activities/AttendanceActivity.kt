@@ -28,6 +28,7 @@ class AttendanceActivity : AppCompatActivity() {
 
     private lateinit var bleCodeContainer: LinearLayout
     private lateinit var etBleCode: EditText
+
     private lateinit var btnSaveCode: Button
     private lateinit var btnStart: Button
     private lateinit var btnStop: Button
@@ -132,7 +133,9 @@ class AttendanceActivity : AppCompatActivity() {
         btnStart.setOnClickListener {
             if (!checkPermissions()) return@setOnClickListener
 
-            if (role == "student") {
+            if (role == "teacher") {
+                startScanning() // ONLY scan
+            } else if (role == "student") {
                 val code = savedBleCode
                 if (code == null) {
                     Toast.makeText(this, "Please save your BLE code first", Toast.LENGTH_SHORT).show()
@@ -156,68 +159,98 @@ class AttendanceActivity : AppCompatActivity() {
                         }
                     }
                 )
-            } else if (role == "teacher") {
-                startScanning()
             }
 
             btnStart.isEnabled = false
             btnStop.isEnabled = true
         }
 
+
         var isInGracePeriod = false
         btnStop.setOnClickListener {
-            if (role == "teacher") {
-                // Log start
-                Log.d("Attendance", "Stop clicked. Entering grace period.")
 
-                // Disable UI buttons
+            /********  TEACHER  *********/
+            if (role == "teacher") {
+
+                // Ignore double-taps while already in grace period
+                if (isInGracePeriod) return@setOnClickListener
+
+                Log.d("Attendance", "Teacher pressed STOP – entering grace period")
+
+                // Lock down UI while we keep scanning for late joiners
                 btnStart.isEnabled = false
-                btnStop.isEnabled = false
+                btnStop.isEnabled  = false
                 bleCodeContainer.isEnabled = false
 
-                // Reset gracePeriodRolls and enable grace period flag
-
-
-                isInGracePeriod = true
                 gracePeriodRolls.clear()
+                isInGracePeriod = true
+                Toast.makeText(
+                    this,
+                    "Grace period started (5 s)… collecting final attendance",
+                    Toast.LENGTH_SHORT
+                ).show()
 
-                Toast.makeText(this, "Grace period started, collecting final attendance...", Toast.LENGTH_SHORT).show()
+                /* Keep the scanner running during grace period.
+                   When the countdown finishes we stop scanning and finalise the list. */
+                object : CountDownTimer(5_000, 1_000) {
 
-                // Start 5-second countdown timer for grace period
-                object : CountDownTimer(5000, 1000) {
                     override fun onTick(millisUntilFinished: Long) {
-                        Log.d("Attendance", "Grace period countdown: ${millisUntilFinished / 1000} seconds")
+                        // Update the subtitle so the teacher sees a live countdown
+                        tvRole.text = getString(
+                            R.string.grace_remaining,
+                            millisUntilFinished / 1_000
+                        )
+                        Log.d("Attendance",
+                            "Grace period countdown: ${millisUntilFinished / 1000}s")
                     }
 
                     override fun onFinish() {
-                        Log.d("Attendance", "Grace period ended, final attendance: $gracePeriodRolls")
+                        isInGracePeriod = false
 
-                        // Stop scanning and cleanup
+                        // Stop BLE scan and housekeeping timer
                         scannerHelper?.stopScanning()
                         stopCleanup()
 
-                        isInGracePeriod = false  // reset flag
+                        // Merge grace-period hits into the main set and refresh list
+                        presentRolls += gracePeriodRolls
+                        adapter.clear()
+                        adapter.addAll(presentRolls.sorted())
+                        adapter.notifyDataSetChanged()
 
-                        // Optional: Save or export gracePeriodRolls here
+                        Log.d("Attendance",
+                            "Grace ended. Final rolls: $presentRolls")
 
-                        // Update UI
-                        runOnUiThread {
-                            btnStart.isEnabled = true
-                            btnStop.isEnabled = false
-                            bleCodeContainer.isEnabled = true
-                        }
+                        // Restore UI
+                        tvRole.text = getString(R.string.attendance_as, role)
+                        btnStart.isEnabled = true
+                        btnStop.isEnabled  = false
+                        bleCodeContainer.isEnabled = true
 
-                        Toast.makeText(this@AttendanceActivity, "Attendance finalized", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(
+                            this@AttendanceActivity,
+                            "Attendance finalised (${presentRolls.size} students)",
+                            Toast.LENGTH_LONG
+                        ).show()
                     }
                 }.start()
-            } else {
+
+
+                /********  STUDENT  *********/
+            } else if (role == "student") {
+
                 advertiserHelper?.stopAdvertising()
-                Toast.makeText(this, "Student stopped broadcasting.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    this,
+                    "Student stopped broadcasting.",
+                    Toast.LENGTH_SHORT
+                ).show()
+
                 btnStart.isEnabled = true
-                btnStop.isEnabled = false
+                btnStop.isEnabled  = false
                 tvRole.text = getString(R.string.attendance_as, role)
             }
         }
+
 
         btnStop.isEnabled = false
     }

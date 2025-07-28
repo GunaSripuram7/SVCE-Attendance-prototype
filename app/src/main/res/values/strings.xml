@@ -21,6 +21,8 @@
     <string name="present_count">Present: %1$d</string>
     <string name="logout">Logout</string>
     <string name="advertising_code">Advertising code: %d</string>
+    <string name="grace_remaining">Grace period: %1$d s left</string>
+
 
 </resources>
 
