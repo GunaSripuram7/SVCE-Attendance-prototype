@@ -1,9 +1,11 @@
 package com.svce.attendance.activities
 
 import android.Manifest
-import android.bluetooth.BluetoothManager
+import android.os.CountDownTimer
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
 import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.widget.*
@@ -23,6 +25,7 @@ class AttendanceActivity : AppCompatActivity() {
     private var scannerHelper: BleScannerHelper? = null
     private var advertiserHelper: BleAdvertiserHelper? = null
 
+
     private lateinit var bleCodeContainer: LinearLayout
     private lateinit var etBleCode: EditText
     private lateinit var btnSaveCode: Button
@@ -31,9 +34,21 @@ class AttendanceActivity : AppCompatActivity() {
     private lateinit var tvRole: TextView
     private lateinit var listView: ListView
     private lateinit var adapter: ArrayAdapter<String>
+    private var isInGracePeriod = false
+    private val gracePeriodRolls = mutableSetOf<String>()
+
+
+    // Set of currently present roll numbers
     private val presentRolls = mutableSetOf<String>()
 
-    private val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+    // Map to track last seen time of each roll number (millis)
+    private val lastSeenMap = mutableMapOf<String, Long>()
+
+    private val handler = Handler(Looper.getMainLooper())
+    private val cleanupIntervalMillis = 2000L  // run cleanup every 2 sec
+    private val timeoutMillis = 5000L          // remove entries if no seen for 5 sec
+
+    private val permissions = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
         arrayOf(
             Manifest.permission.BLUETOOTH_SCAN,
             Manifest.permission.BLUETOOTH_CONNECT,
@@ -45,8 +60,33 @@ class AttendanceActivity : AppCompatActivity() {
 
     private lateinit var codeToRoll: Map<Int, String>
 
-    // For student BLE code entered and saved during runtime
     private var savedBleCode: Int? = null
+    private lateinit var role: String
+
+    private val cleanupRunnable = object : Runnable {
+        override fun run() {
+            val now = System.currentTimeMillis()
+            var listChanged = false
+            val iterator = lastSeenMap.iterator()
+            while (iterator.hasNext()) {
+                val entry = iterator.next()
+                if (now - entry.value > timeoutMillis) {
+                    iterator.remove()
+                    if (presentRolls.remove(entry.key)) {
+                        listChanged = true
+                    }
+                }
+            }
+            if (listChanged) {
+                runOnUiThread {
+                    adapter.clear()
+                    adapter.addAll(presentRolls.sorted())
+                    adapter.notifyDataSetChanged()
+                }
+            }
+            handler.postDelayed(this, cleanupIntervalMillis)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -62,17 +102,17 @@ class AttendanceActivity : AppCompatActivity() {
         adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, ArrayList())
         listView.adapter = adapter
 
-        val role = intent.getStringExtra("role") ?: ""
+        role = intent.getStringExtra("role") ?: ""
         tvRole.text = getString(R.string.attendance_as, role)
 
         loadMapping()
 
         if (role == "teacher") {
-            // Teacher: hide BLE code input, enable start for scanning immediately
+            // Teacher UI: No BLE input
             bleCodeContainer.visibility = View.GONE
             btnStart.isEnabled = true
         } else {
-            // Student: show BLE code input and disable start until saved
+            // Student UI: show BLE input, disable start until BLE code saved
             bleCodeContainer.visibility = View.VISIBLE
             btnStart.isEnabled = false
 
@@ -99,7 +139,6 @@ class AttendanceActivity : AppCompatActivity() {
                     return@setOnClickListener
                 }
 
-                // Start BLE advertising with the saved BLE code
                 if (advertiserHelper == null) {
                     advertiserHelper = BleAdvertiserHelper(this, serviceUuid)
                 }
@@ -125,18 +164,57 @@ class AttendanceActivity : AppCompatActivity() {
             btnStop.isEnabled = true
         }
 
+        var isInGracePeriod = false
         btnStop.setOnClickListener {
             if (role == "teacher") {
-                scannerHelper?.stopScanning()
-                Toast.makeText(this, "Teacher scanning stopped", Toast.LENGTH_SHORT).show()
+                // Log start
+                Log.d("Attendance", "Stop clicked. Entering grace period.")
+
+                // Disable UI buttons
+                btnStart.isEnabled = false
+                btnStop.isEnabled = false
+                bleCodeContainer.isEnabled = false
+
+                // Reset gracePeriodRolls and enable grace period flag
+
+
+                isInGracePeriod = true
+                gracePeriodRolls.clear()
+
+                Toast.makeText(this, "Grace period started, collecting final attendance...", Toast.LENGTH_SHORT).show()
+
+                // Start 5-second countdown timer for grace period
+                object : CountDownTimer(5000, 1000) {
+                    override fun onTick(millisUntilFinished: Long) {
+                        Log.d("Attendance", "Grace period countdown: ${millisUntilFinished / 1000} seconds")
+                    }
+
+                    override fun onFinish() {
+                        Log.d("Attendance", "Grace period ended, final attendance: $gracePeriodRolls")
+
+                        // Stop scanning and cleanup
+                        scannerHelper?.stopScanning()
+                        stopCleanup()
+
+                        isInGracePeriod = false  // reset flag
+
+                        // Optional: Save or export gracePeriodRolls here
+
+                        // Update UI
+                        runOnUiThread {
+                            btnStart.isEnabled = true
+                            btnStop.isEnabled = false
+                            bleCodeContainer.isEnabled = true
+                        }
+
+                        Toast.makeText(this@AttendanceActivity, "Attendance finalized", Toast.LENGTH_SHORT).show()
+                    }
+                }.start()
             } else {
                 advertiserHelper?.stopAdvertising()
-                Toast.makeText(this, "Student advertising stopped", Toast.LENGTH_SHORT).show()
-            }
-
-            btnStart.isEnabled = true
-            btnStop.isEnabled = false
-            if (role == "student") {
+                Toast.makeText(this, "Student stopped broadcasting.", Toast.LENGTH_SHORT).show()
+                btnStart.isEnabled = true
+                btnStop.isEnabled = false
                 tvRole.text = getString(R.string.attendance_as, role)
             }
         }
@@ -152,7 +230,8 @@ class AttendanceActivity : AppCompatActivity() {
         val keys = obj.keys()
         while (keys.hasNext()) {
             val key = keys.next()
-            key.toIntOrNull()?.let { code ->
+            val code = key.toIntOrNull()
+            if (code != null) {
                 map[code] = obj.getString(key)
             }
         }
@@ -161,31 +240,46 @@ class AttendanceActivity : AppCompatActivity() {
 
     private fun startScanning() {
         presentRolls.clear()
+        lastSeenMap.clear()
         adapter.clear()
 
         scannerHelper = BleScannerHelper(
             context = this,
             serviceUuid = serviceUuid,
-            onCodeFound = { code ->
-                android.util.Log.d("AttendanceActivity", "Scanned BLE code: $code")
-                codeToRoll[code]?.let { roll ->
-                    if (presentRolls.add(roll)) {
-                        runOnUiThread {
-                            adapter.add(roll)
-                            adapter.notifyDataSetChanged()
+            onDeviceFound = { code: Int ->
+                val roll = codeToRoll[code]
+                if (roll != null) {
+                    lastSeenMap[roll] = System.currentTimeMillis()
+
+                    if (isInGracePeriod) {
+                        gracePeriodRolls.add(roll)
+                    } else {
+                        val isNew = presentRolls.add(roll)
+                        if (isNew) {
+                            runOnUiThread {
+                                adapter.add(roll)
+                                adapter.notifyDataSetChanged()
+                            }
                         }
                     }
-                } ?: run {
-                    android.util.Log.d("AttendanceActivity", "Unmapped BLE code scanned: $code")
                 }
             },
-            onScanFailure = { err ->
+            onScanFailure = { err: Int ->
                 runOnUiThread {
                     Toast.makeText(this, "Scan failed: $err", Toast.LENGTH_SHORT).show()
                 }
             }
         )
         scannerHelper?.startScanning()
+        startCleanup()
+    }
+
+    private fun startCleanup() {
+        handler.post(cleanupRunnable)
+    }
+
+    private fun stopCleanup() {
+        handler.removeCallbacks(cleanupRunnable)
     }
 
     private fun checkPermissions(): Boolean {
