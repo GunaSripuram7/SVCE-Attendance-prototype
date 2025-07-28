@@ -15,6 +15,11 @@ import com.svce.attendance.R
 import java.io.File
 import java.io.FileReader
 import java.io.FileWriter
+import okhttp3.*
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
+import java.io.IOException
 
 class PresentStudentsActivity : AppCompatActivity() {
 
@@ -84,6 +89,34 @@ class PresentStudentsActivity : AppCompatActivity() {
         }
     }
 
+    private fun postAttendanceToSheet(session: String, rollNumbers: List<String>, onResult: (Boolean) -> Unit) {
+        val url = "https://script.google.com/macros/s/AKfycbylrykRGRMxN_GxFcs3SgLnhaRpOpvSmtVQBO4Vankkt6BtquPI5s737q_typdvLNPb/exec"
+        val client = OkHttpClient()
+    
+        val json = JSONObject()
+        json.put("session", session)
+        json.put("rollNumbers", rollNumbers)
+    
+        val body = json.toString()
+            .toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
+    
+        val request = Request.Builder()
+            .url(url)
+            .post(body)
+            .build()
+    
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                runOnUiThread { onResult(false) }
+            }
+    
+            override fun onResponse(call: Call, response: Response) {
+                val isSuccess = response.isSuccessful && response.body?.string()?.contains("\"status\":\"success\"") == true
+                runOnUiThread { onResult(isSuccess) }
+            }
+        })
+    }
+
     // Update CSV: Find session column by timestamp and set "P" for the roll
     private fun markAsPresent(roll: String) {
         val file = File(filesDir, "rolls/$mentorEmail.csv")
@@ -105,6 +138,15 @@ class PresentStudentsActivity : AppCompatActivity() {
         // Write back to file
         CSVWriter(FileWriter(file)).use { writer ->
             writer.writeAll(allRows)
+        }
+
+        postAttendanceToSheet(sessionTime, presentRolls) { success ->
+        val message = if (success) "Attendance updated in Google Sheet!" else "Failed to update Google Sheet."
+        AlertDialog.Builder(this)
+            .setTitle(if (success) "Success" else "Failure")
+            .setMessage(message)
+            .setPositiveButton("OK", null)
+            .show()
         }
     }
 
