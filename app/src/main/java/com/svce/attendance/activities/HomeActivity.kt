@@ -24,16 +24,16 @@ class HomeActivity : AppCompatActivity() {
     private lateinit var ivProfile: ImageView
 
     private lateinit var attendanceCsvFile: File
-    private lateinit var mentorEmail: String
-    private lateinit var assignedRolls: List<String>
-    private lateinit var attendanceMatrix: List<Array<String>>
+    private var mentorEmail: String = ""   // Changed to non-lateinit for safe checks
+    private var assignedRolls: List<String> = emptyList()
+    private var attendanceMatrix: List<Array<String>> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_home)
 
         val role = intent.getStringExtra("role") ?: "Unknown"
-        mentorEmail = intent.getStringExtra("email") ?: ""
+        mentorEmail = intent.getStringExtra("email") ?: ""  // May be empty for test teachers
         Log.d("HomeActivity", "Loaded role: $role, mentorEmail: '$mentorEmail'")
 
         tvHomeRole = findViewById(R.id.tvHomeRole)
@@ -48,7 +48,7 @@ class HomeActivity : AppCompatActivity() {
         btnAttendance.setOnClickListener {
             val intent = Intent(this, AttendanceActivity::class.java).apply {
                 putExtra("role", role)
-                if (role == "teacher") {
+                if (role == "teacher" && mentorEmail.isNotEmpty()) {
                     putExtra("email", mentorEmail)
                 }
             }
@@ -61,10 +61,14 @@ class HomeActivity : AppCompatActivity() {
 
         if (role == "teacher") {
             recycler.visibility = View.VISIBLE
-            // Removed mentorEmail check to allow teacher access without login details
 
-            prepareCsvFiles()
-            loadAttendanceCsv()
+            // Only attempt CSV load if mentorEmail is provided
+            if (mentorEmail.isNotEmpty()) {
+                prepareCsvFiles()
+                loadAttendanceCsv()
+            } else {
+                Log.w("HomeActivity", "Teacher mentorEmail is empty, skipping CSV load")
+            }
 
             findViewById<Button>(R.id.btnLogout).setOnClickListener {
                 val sharedPref = getSharedPreferences("teacher_prefs", MODE_PRIVATE)
@@ -88,12 +92,14 @@ class HomeActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         val role = intent.getStringExtra("role") ?: "Unknown"
-        if (role == "teacher" && ::attendanceCsvFile.isInitialized) {
+        if (role == "teacher" && attendanceMatrix.isNotEmpty()) {
             displayAttendanceBlocks()
         }
     }
 
     private fun prepareCsvFiles() {
+        if (mentorEmail.isEmpty()) return
+
         val assetPath = "rolls/$mentorEmail.csv"
         attendanceCsvFile = File(filesDir, "rolls/$mentorEmail.csv")
         try {
@@ -133,7 +139,7 @@ class HomeActivity : AppCompatActivity() {
 
     private fun displayAttendanceBlocks() {
         loadAttendanceCsv()
-        if (!::attendanceMatrix.isInitialized || attendanceMatrix.isEmpty()) return
+        if (attendanceMatrix.isEmpty()) return
 
         val sessions = mutableListOf<SessionBlock>()
         val header = attendanceMatrix[0]

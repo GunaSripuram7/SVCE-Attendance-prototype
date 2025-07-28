@@ -1,21 +1,17 @@
 package com.svce.attendance.activities
 
 import android.Manifest
+import android.bluetooth.BluetoothManager
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.view.View
-import android.widget.ArrayAdapter
-import android.widget.Button
-import android.widget.EditText
-import android.widget.LinearLayout
-import android.widget.ListView
-import android.widget.TextView
-import android.widget.Toast
+import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.svce.attendance.R
+import com.svce.attendance.ble.BleAdvertiserHelper
 import com.svce.attendance.ble.BleScannerHelper
 import org.json.JSONObject
 import java.io.InputStream
@@ -25,6 +21,7 @@ class AttendanceActivity : AppCompatActivity() {
 
     private val serviceUuid = UUID.fromString("0000fd00-0000-1000-8000-00805f9b34fb")
     private var scannerHelper: BleScannerHelper? = null
+    private var advertiserHelper: BleAdvertiserHelper? = null
 
     private lateinit var bleCodeContainer: LinearLayout
     private lateinit var etBleCode: EditText
@@ -37,7 +34,11 @@ class AttendanceActivity : AppCompatActivity() {
     private val presentRolls = mutableSetOf<String>()
 
     private val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
+        arrayOf(
+            Manifest.permission.BLUETOOTH_SCAN,
+            Manifest.permission.BLUETOOTH_CONNECT,
+            Manifest.permission.BLUETOOTH_ADVERTISE
+        )
     } else {
         arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
     }
@@ -67,12 +68,11 @@ class AttendanceActivity : AppCompatActivity() {
         loadMapping()
 
         if (role == "teacher") {
-            // Hide BLE code input and show only start/stop buttons for teacher
+            // Teacher: hide BLE code input, enable start for scanning immediately
             bleCodeContainer.visibility = View.GONE
-            btnStart.isEnabled = true // teacher can start scanning immediately
-
+            btnStart.isEnabled = true
         } else {
-            // Show BLE code input for student and disable start until saved
+            // Student: show BLE code input and disable start until saved
             bleCodeContainer.visibility = View.VISIBLE
             btnStart.isEnabled = false
 
@@ -99,9 +99,24 @@ class AttendanceActivity : AppCompatActivity() {
                     return@setOnClickListener
                 }
 
-                // TODO: Add BLE advertising start logic here
-                Toast.makeText(this, "Starting advertising with code $code", Toast.LENGTH_SHORT).show()
-
+                // Start BLE advertising with the saved BLE code
+                if (advertiserHelper == null) {
+                    advertiserHelper = BleAdvertiserHelper(this, serviceUuid)
+                }
+                advertiserHelper?.startAdvertising(
+                    payloadInt = code,
+                    onSuccess = {
+                        runOnUiThread {
+                            tvRole.text = getString(R.string.advertising_code, code)
+                        }
+                        Toast.makeText(this, "Advertising started for code $code", Toast.LENGTH_SHORT).show()
+                    },
+                    onFailure = { errorCode ->
+                        runOnUiThread {
+                            Toast.makeText(this, "Advertising failed with error code $errorCode", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                )
             } else if (role == "teacher") {
                 startScanning()
             }
@@ -115,12 +130,15 @@ class AttendanceActivity : AppCompatActivity() {
                 scannerHelper?.stopScanning()
                 Toast.makeText(this, "Teacher scanning stopped", Toast.LENGTH_SHORT).show()
             } else {
-                // TODO: Add stop advertising logic for student if needed
-                Toast.makeText(this, "Student broadcasting stopped", Toast.LENGTH_SHORT).show()
+                advertiserHelper?.stopAdvertising()
+                Toast.makeText(this, "Student advertising stopped", Toast.LENGTH_SHORT).show()
             }
 
             btnStart.isEnabled = true
             btnStop.isEnabled = false
+            if (role == "student") {
+                tvRole.text = getString(R.string.attendance_as, role)
+            }
         }
 
         btnStop.isEnabled = false
@@ -144,6 +162,7 @@ class AttendanceActivity : AppCompatActivity() {
     private fun startScanning() {
         presentRolls.clear()
         adapter.clear()
+
         scannerHelper = BleScannerHelper(
             context = this,
             serviceUuid = serviceUuid,
@@ -157,7 +176,6 @@ class AttendanceActivity : AppCompatActivity() {
                         }
                     }
                 } ?: run {
-                    // Optional: show a debug toast or log for unmapped codes
                     android.util.Log.d("AttendanceActivity", "Unmapped BLE code scanned: $code")
                 }
             },
@@ -165,7 +183,8 @@ class AttendanceActivity : AppCompatActivity() {
                 runOnUiThread {
                     Toast.makeText(this, "Scan failed: $err", Toast.LENGTH_SHORT).show()
                 }
-            })
+            }
+        )
         scannerHelper?.startScanning()
     }
 
@@ -173,7 +192,9 @@ class AttendanceActivity : AppCompatActivity() {
         val missing = permissions.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
-        return if (missing.isEmpty()) true else {
+        return if (missing.isEmpty()) {
+            true
+        } else {
             ActivityCompat.requestPermissions(this, missing.toTypedArray(), 200)
             false
         }
