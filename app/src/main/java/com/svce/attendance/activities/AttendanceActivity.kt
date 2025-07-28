@@ -17,6 +17,9 @@ import com.svce.attendance.ble.BleAdvertiserHelper
 import com.svce.attendance.ble.BleScannerHelper
 import org.json.JSONObject
 import java.io.InputStream
+import java.io.File
+import java.io.FileWriter
+import java.text.SimpleDateFormat
 import java.util.*
 
 class AttendanceActivity : AppCompatActivity() {
@@ -211,6 +214,9 @@ class AttendanceActivity : AppCompatActivity() {
                         scannerHelper?.stopScanning()
                         stopCleanup()
 
+                        val finalSet = presentRolls + gracePeriodRolls
+                        exportSessionCsv(finalSet)    // <- writes dd-MM-yyyy-N.csv
+
                         // Merge grace-period hits into the main set and refresh list
                         presentRolls += gracePeriodRolls
                         adapter.clear()
@@ -314,6 +320,57 @@ class AttendanceActivity : AppCompatActivity() {
     private fun stopCleanup() {
         handler.removeCallbacks(cleanupRunnable)
     }
+
+
+    private fun exportSessionCsv(rolls: Collection<String>) {
+        val csvFile = createNextSessionCsv()
+
+        FileWriter(csvFile).use { w ->
+            w.appendLine("Roll Number")
+            rolls.sorted().forEach { w.appendLine(it) }
+        }
+
+        //  NEW  – explicit feedback
+        Log.d("Attendance", "CSV saved at ${csvFile.absolutePath}")
+        Toast.makeText(this,
+            "CSV saved:\n${csvFile.absolutePath}",   // show full path
+            Toast.LENGTH_LONG).show()
+    }
+
+
+
+    /**
+     * Create (and return) a new CSV file whose name follows
+     *   dd-MM-yyyy-<ordinal>.csv   where <ordinal> starts at 1 every day
+     */
+    private fun createNextSessionCsv(): File {
+        // 1)  App-private “sessions” directory on external storage
+        val sessionsDir = File(getExternalFilesDir(null), "sessions").apply { mkdirs() }
+
+        // 2)  Date part  ->  "28-07-2025"
+        val datePart = SimpleDateFormat("dd-MM-yyyy", Locale.US).format(Date())
+
+        // 3)  Find all files for today and read their trailing numbers
+        val existingToday = sessionsDir.listFiles { _, name ->
+            name.startsWith(datePart) && name.endsWith(".csv")
+        } ?: emptyArray()
+
+        val highestOrdinal = existingToday
+            .mapNotNull { file ->
+                // Pull the number between the last hyphen and ".csv"
+                Regex("""${Regex.escape(datePart)}-(\d+)\.csv""")
+                    .find(file.name)
+                    ?.groupValues?.get(1)
+                    ?.toInt()
+            }
+            .maxOrNull() ?: 0   // 0 if none found
+
+        val nextOrdinal = highestOrdinal + 1        // auto-increment
+        val newFileName = "$datePart-$nextOrdinal.csv"
+
+        return File(sessionsDir, newFileName)       // NOT yet written
+    }
+
 
     private fun checkPermissions(): Boolean {
         val missing = permissions.filter {
