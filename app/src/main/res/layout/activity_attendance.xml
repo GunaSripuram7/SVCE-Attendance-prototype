@@ -1,97 +1,80 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
-    android:orientation="vertical"
-    android:gravity="center"
-    android:padding="32dp"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
 
+    <!-- BLE Code Entry Container -->
+    <LinearLayout
+        android:id="@+id/bleCodeContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Enter your BLE code:"
+            android:textSize="16sp" />
+
+        <EditText
+            android:id="@+id/etBleCode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="number"
+            android:hint="e.g. 1234"
+            android:layout_marginTop="4dp" />
+
+        <Button
+            android:id="@+id/btnSaveCode"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Save Code"
+            android:layout_marginTop="8dp" />
+    </LinearLayout>
+
+    <!-- Role Display -->
     <TextView
         android:id="@+id/tvAttendanceRole"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Attendance"
-        android:textSize="24sp"
-        android:layout_marginBottom="24dp"/>
+        android:text="Attendance as: "
+        android:textSize="18sp"
+        android:layout_marginTop="16dp" />
 
+    <!-- Start/Stop Attendance -->
     <Button
         android:id="@+id/btnStart"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Start Attendance"/>
+        android:text="Start Attendance"
+        android:enabled="false"
+        android:layout_marginTop="16dp" />
 
     <Button
         android:id="@+id/btnStop"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Stop Attendance"
-        android:layout_marginTop="16dp"/>
+        android:enabled="false"
+        android:layout_marginTop="8dp" />
 
+    <!-- Status / Broadcast Countdown -->
     <TextView
-        android:id="@+id/tvGrace"
+        android:id="@+id/tvBroadcastCountdown"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text=""
-        android:textSize="18sp"
-        android:layout_marginTop="12dp"/>
+        android:text="Not broadcasting"
+        android:layout_marginTop="16dp" />
 
+    <!-- Roster List (for teacher) -->
     <ListView
         android:id="@+id/listRolls"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:layout_marginTop="24dp"/>
-
-    <!-- Ping button is no longer used, keep it hidden for backward compatibility -->
-    <Button
-        android:id="@+id/btnPing"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Ping Students"
-        android:visibility="gone"
-        android:layout_marginTop="16dp"/>
-
-    <!-- Confirm button remains hidden as confirmation is automatic now -->
-    <Button
-        android:id="@+id/btnConfirm"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Confirm"
-        android:visibility="gone"/>
-
-    <!-- TextView to show 30-second broadcast countdown during confirmation phase -->
-    <TextView
-        android:id="@+id/tvBroadcastCountdown"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Broadcasting confirmation: 30"
-        android:textSize="20sp"
-        android:textColor="@android:color/holo_green_dark"
-        android:layout_marginTop="16dp"
-        android:visibility="gone"
-        android:layout_gravity="center"/>
-
-    <!-- Horizontal progress bar for 30-second broadcast -->
-    <ProgressBar
-        android:id="@+id/progressBroadcast"
-        style="?android:attr/progressBarStyleHorizontal"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:max="30"
-        android:visibility="gone"
-        android:layout_marginTop="8dp" />
-
-    <!-- Optional: Student confirmation status display -->
-    <TextView
-        android:id="@+id/tvStudentConfirmation"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Attendance Confirmed!"
-        android:textSize="18sp"
-        android:textColor="@android:color/holo_green_dark"
-        android:layout_marginTop="16dp"
-        android:visibility="gone"
-        android:layout_gravity="center"/>
+        android:layout_marginTop="16dp" />
 
 </LinearLayout>

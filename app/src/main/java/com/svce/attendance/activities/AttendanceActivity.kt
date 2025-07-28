@@ -1,464 +1,181 @@
 package com.svce.attendance.activities
 
-import com.svce.attendance.ble.BleAdvertiserHelper
-import com.svce.attendance.ble.BleScannerHelper
 import android.Manifest
-import android.content.Intent
 import android.content.pm.PackageManager
-import android.os.*
+import android.os.Build
+import android.os.Bundle
+import android.view.View
+import android.widget.ArrayAdapter
+import android.widget.Button
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.ListView
+import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import com.svce.attendance.R
-import android.widget.*
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import android.bluetooth.BluetoothManager
-import android.text.InputFilter
+import com.svce.attendance.R
+import com.svce.attendance.ble.BleScannerHelper
+import org.json.JSONObject
+import java.io.InputStream
 import java.util.*
-import android.view.View
-import android.util.Log
-import android.os.CountDownTimer
-import androidx.appcompat.app.AlertDialog
-import com.opencsv.CSVReader
-import com.opencsv.CSVWriter
-import java.io.File
-import java.io.FileReader
-import java.io.FileWriter
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import android.widget.ProgressBar
 
 class AttendanceActivity : AppCompatActivity() {
 
     private val serviceUuid = UUID.fromString("0000fd00-0000-1000-8000-00805f9b34fb")
-    private var bleAdvertiserHelper: BleAdvertiserHelper? = null
-    private var bleScannerHelper: BleScannerHelper? = null
+    private var scannerHelper: BleScannerHelper? = null
 
-    private val liveRollNumbers = mutableSetOf<String>()
-    private val finalRollNumbers = mutableSetOf<String>()
-    private var recordFinalList = false
-
-    private var rollAdapter: ArrayAdapter<String>? = null
-    private lateinit var btnStop: Button
+    private lateinit var bleCodeContainer: LinearLayout
+    private lateinit var etBleCode: EditText
+    private lateinit var btnSaveCode: Button
     private lateinit var btnStart: Button
-    private lateinit var tvGrace: TextView
-    private lateinit var btnPing: Button
-    private lateinit var btnConfirm: Button
-    private lateinit var tvBroadcastCountdown: TextView
+    private lateinit var btnStop: Button
+    private lateinit var tvRole: TextView
+    private lateinit var listView: ListView
+    private lateinit var adapter: ArrayAdapter<String>
+    private val presentRolls = mutableSetOf<String>()
 
-    private var studentRollNumber: String? = null
-    private var broadcastTimer: CountDownTimer? = null
-    // --- TRACK CONFIRMATIONS (student side will maintain locally) ---
-    private val confirmations = mutableMapOf<String, Boolean>()
-
-    private lateinit var assignedRolls: Set<String>
-
-    private val blePermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        arrayOf(
-            Manifest.permission.BLUETOOTH_SCAN,
-            Manifest.permission.BLUETOOTH_ADVERTISE,
-            Manifest.permission.BLUETOOTH_CONNECT
-        )
+    private val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
     } else {
-        arrayOf(
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.ACCESS_COARSE_LOCATION
-        )
+        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
     }
 
-    private val bleRequestCode = 101
+    private lateinit var codeToRoll: Map<Int, String>
 
-    // For teacher advertising cycle
-    private var advertiseIndex = 0
-    private val advertiseHandler = Handler(Looper.getMainLooper())
-    private val advertiseInterval = 300L
-
-    private val advertiseRunnable = object : Runnable {
-        override fun run() {
-            if (finalRollNumbers.isEmpty()) return
-
-            val rollList = finalRollNumbers.toList()
-            val currentRoll = rollList[advertiseIndex % rollList.size]
-            startAdvertisingRollNumber(currentRoll)
-
-            advertiseIndex++
-            advertiseHandler.postDelayed(this, advertiseInterval)
-        }
-    }
+    // For student BLE code entered and saved during runtime
+    private var savedBleCode: Int? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_attendance)
 
-        if (!checkAndRequestBLEPermissions()) {
-            // Early exit until permissions are granted
-            return
-        }
-
-        val role = intent.getStringExtra("role") ?: "Unknown"
-        val tvAttendanceRole = findViewById<TextView>(R.id.tvAttendanceRole)
-        tvAttendanceRole.text = getString(R.string.attendance_as, role)
-
-        // Load assigned rolls if teacher
-        if (role == "teacher") {
-            loadAssignedRollsCsv()
-        }
-
+        bleCodeContainer = findViewById(R.id.bleCodeContainer)
+        etBleCode = findViewById(R.id.etBleCode)
+        btnSaveCode = findViewById(R.id.btnSaveCode)
         btnStart = findViewById(R.id.btnStart)
         btnStop = findViewById(R.id.btnStop)
-        tvGrace = findViewById(R.id.tvGrace)
-        btnPing = findViewById(R.id.btnPing)
-        btnConfirm = findViewById(R.id.btnConfirm)
-        tvBroadcastCountdown = findViewById(R.id.tvBroadcastCountdown)
+        tvRole = findViewById(R.id.tvAttendanceRole)
+        listView = findViewById(R.id.listRolls)
+        adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, ArrayList())
+        listView.adapter = adapter
 
-        tvGrace.text = "" // hidden until grace starts
-        tvBroadcastCountdown.visibility = View.GONE
+        val role = intent.getStringExtra("role") ?: ""
+        tvRole.text = getString(R.string.attendance_as, role)
 
-        val listRolls = findViewById<ListView>(R.id.listRolls)
-        rollAdapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, ArrayList())
-        listRolls.adapter = rollAdapter
+        loadMapping()
 
-        btnPing.visibility = View.GONE // Completely hide the ping button as per new design
-        btnConfirm.visibility = View.GONE // No manual confirm
+        if (role == "teacher") {
+            // Hide BLE code input and show only start/stop buttons for teacher
+            bleCodeContainer.visibility = View.GONE
+            btnStart.isEnabled = true // teacher can start scanning immediately
 
-        if (role == "student" && studentRollNumber == null) {
-            promptForRollNumber { roll ->
-                Toast.makeText(this, "Roll Number Saved: $roll", Toast.LENGTH_SHORT).show()
+        } else {
+            // Show BLE code input for student and disable start until saved
+            bleCodeContainer.visibility = View.VISIBLE
+            btnStart.isEnabled = false
+
+            btnSaveCode.setOnClickListener {
+                val codeText = etBleCode.text.toString().trim()
+                val codeInt = codeText.toIntOrNull()
+                if (codeInt == null) {
+                    Toast.makeText(this, "Please enter a valid integer BLE code", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                savedBleCode = codeInt
+                btnStart.isEnabled = true
+                Toast.makeText(this, "BLE code saved: $codeInt", Toast.LENGTH_SHORT).show()
             }
         }
 
         btnStart.setOnClickListener {
-            if (!checkAndRequestBLEPermissions()) return@setOnClickListener
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT)
-                != PackageManager.PERMISSION_GRANTED
-            ) {
-                Toast.makeText(this, "Bluetooth permissions required!", Toast.LENGTH_SHORT).show()
-                checkAndRequestBLEPermissions()
-                return@setOnClickListener
-            }
-            val bluetoothManager = getSystemService(BLUETOOTH_SERVICE) as BluetoothManager
-            val bluetoothAdapter = bluetoothManager.adapter
-            if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
-                val enableBtIntent = Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS)
-                startActivity(enableBtIntent)
-                Toast.makeText(this, "Please enable Bluetooth then press Start again.", Toast.LENGTH_LONG).show()
-                return@setOnClickListener
-            }
-            if (role == "teacher") {
-                Toast.makeText(this, "Attendance started via BLE (teacher)", Toast.LENGTH_SHORT).show()
-                if (bleScannerHelper == null) bleScannerHelper = BleScannerHelper(this, serviceUuid)
-                liveRollNumbers.clear()
-                finalRollNumbers.clear()
-                recordFinalList = false
-                confirmations.clear()
+            if (!checkPermissions()) return@setOnClickListener
 
-                bleScannerHelper?.startScan(
-                    onDeviceFound = { payload ->
-                        runOnUiThread {
-                            // Filter: Only add if it's an assigned roll number
-                            if (assignedRolls.contains(payload)) {
-                                liveRollNumbers.add(payload)
-                                if (recordFinalList) finalRollNumbers.add(payload)
-                                updateRollList()
-                            }
-                        }
-                    },
-                    onScanFailure = { code ->
-                        runOnUiThread {
-                            Toast.makeText(this, "Scan failed: $code", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                )
-            } else {
-                // STUDENT LOGIC: advertise own roll number and scan for teacher broadcasts of roll numbers for confirmation
-                if (studentRollNumber.isNullOrBlank()) {
-                    promptForRollNumber {}
+            if (role == "student") {
+                val code = savedBleCode
+                if (code == null) {
+                    Toast.makeText(this, "Please save your BLE code first", Toast.LENGTH_SHORT).show()
                     return@setOnClickListener
                 }
-                Toast.makeText(this, "Attendance started via BLE (student)", Toast.LENGTH_SHORT).show()
 
-                if (bleScannerHelper == null) bleScannerHelper = BleScannerHelper(this, serviceUuid)
-                bleScannerHelper?.startScan(
-                    onDeviceFound = { payload ->
-                        runOnUiThread {
-                            if (payload == studentRollNumber) {
-                                if (confirmations[studentRollNumber!!] != true) {
-                                    confirmations[studentRollNumber!!] = true
-                                    showStudentConfirmationUI()
-                                }
-                            }
-                        }
-                    },
-                    onScanFailure = { code ->
-                        runOnUiThread {
-                            Toast.makeText(this, "Scan failed: $code", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                )
-                if (bleAdvertiserHelper == null) bleAdvertiserHelper = BleAdvertiserHelper(this, serviceUuid)
-                bleAdvertiserHelper?.startAdvertising(
-                    studentRollNumber!!,
-                    onSuccess = {
-                        runOnUiThread { Toast.makeText(this, "BLE advertising started.", Toast.LENGTH_SHORT).show() }
-                    },
-                    onFailure = { code ->
-                        runOnUiThread { Toast.makeText(this, "Advertise failed: $code", Toast.LENGTH_SHORT).show() }
-                    }
-                )
-                liveRollNumbers.clear()
-                liveRollNumbers.add(studentRollNumber!!)
-                updateRollList()
+                // TODO: Add BLE advertising start logic here
+                Toast.makeText(this, "Starting advertising with code $code", Toast.LENGTH_SHORT).show()
+
+            } else if (role == "teacher") {
+                startScanning()
             }
+
             btnStart.isEnabled = false
             btnStop.isEnabled = true
         }
 
-        // Confirm button unused now, so hide and disable it
-        btnConfirm.visibility = View.GONE
-        btnConfirm.setOnClickListener(null)
-
         btnStop.setOnClickListener {
             if (role == "teacher") {
-                // Hide ping button permanently since unused
-                btnPing.visibility = View.GONE
-
-                // 5-second grace period before starting 10-sec broadcast
-                showGraceDialog(5) {
-                    bleScannerHelper?.stopScan()
-                    recordFinalList = false
-                    tvGrace.text = ""
-                    liveRollNumbers.clear()
-                    liveRollNumbers.addAll(finalRollNumbers)
-                    updateRollList()
-                    Toast.makeText(this, "Grace period ended - starting confirmation broadcast!", Toast.LENGTH_LONG).show()
-                    startBroadcastConfirmation()
-                }
-                recordFinalList = true
-                finalRollNumbers.clear()
+                scannerHelper?.stopScanning()
+                Toast.makeText(this, "Teacher scanning stopped", Toast.LENGTH_SHORT).show()
             } else {
-                bleAdvertiserHelper?.stopAdvertising()
-                bleScannerHelper?.stopScan()
-                Toast.makeText(this, "Advertising stopped", Toast.LENGTH_SHORT).show()
+                // TODO: Add stop advertising logic for student if needed
+                Toast.makeText(this, "Student broadcasting stopped", Toast.LENGTH_SHORT).show()
             }
+
             btnStart.isEnabled = true
             btnStop.isEnabled = false
         }
 
-        // Ping button removed from action since no longer needed
-        btnPing.setOnClickListener(null)
-
-        btnStart.isEnabled = true
         btnStop.isEnabled = false
-        updateRollList()
     }
 
-    private fun loadAssignedRollsCsv() {
-        val mentorEmail = intent.getStringExtra("email") ?: return
-        val file = File(filesDir, "rolls/$mentorEmail.csv")
-        assignedRolls = try {
-            CSVReader(FileReader(file)).use { reader ->
-                reader.readAll().drop(1).mapNotNull { it.getOrNull(0) }.toSet()
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            emptySet()
-        }
-    }
-
-    private fun startBroadcastConfirmation() {
-        // Ensure the advertiser helper exists
-        if (bleAdvertiserHelper == null) {
-            bleAdvertiserHelper = BleAdvertiserHelper(this, serviceUuid)
-        }
-
-        // Show countdown UI and begin cycling roll-number adverts
-        tvBroadcastCountdown.visibility = View.VISIBLE
-        advertiseIndex = 0
-        advertiseHandler.post(advertiseRunnable)
-
-        // 30-second confirmation window with progress bar update
-        broadcastTimer = object : CountDownTimer(30_000, 1_000) {
-            override fun onTick(millisUntilFinished: Long) {
-                val secondsRemaining = (millisUntilFinished / 1_000).toInt()
-                val progress = 30 - secondsRemaining
-
-                tvBroadcastCountdown.text = getString(R.string.broadcast_countdown, secondsRemaining)
-                findViewById<ProgressBar>(R.id.progressBroadcast)?.let {
-                    it.progress = progress
-                    it.visibility = View.VISIBLE
-                }
-            }
-
-            override fun onFinish() {
-                advertiseHandler.removeCallbacks(advertiseRunnable)
-                stopAdvertising()
-                tvBroadcastCountdown.visibility = View.GONE
-                findViewById<ProgressBar>(R.id.progressBroadcast)?.visibility = View.GONE
-                saveAttendanceSession()
-
-                // 4) Append the new attendance column to the teacher’s CSV
-                appendAttendanceColumn(
-                    mentorEmail    = intent.getStringExtra("email")!!,
-                    confirmedList  = confirmations.keys
-                )
-                Toast.makeText(
-                    this@AttendanceActivity,
-                    "Attendance session saved!",
-                    Toast.LENGTH_SHORT
-                ).show()
-            }
-        }.start()
-    }
-
-    private fun startAdvertisingRollNumber(rollNumber: String) {
-        stopAdvertising()
-
-        bleAdvertiserHelper?.startAdvertising(
-            rollNumber,
-            onSuccess = { /* Advertising started for rollNumber */ },
-            onFailure = { code -> Log.e("BLE", "Advertising failed for roll $rollNumber: $code") }
-        )
-    }
-
-    private fun stopAdvertising() {
-        bleAdvertiserHelper?.stopAdvertising()
-    }
-
-    private fun saveAttendanceSession() {
-        if (finalRollNumbers.isEmpty()) return
-
-        val now = System.currentTimeMillis()
-        val format = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
-        confirmations.clear()
-        finalRollNumbers.forEach { confirmations[it] = true } // All final rolls confirmed by implicit broadcast
-        val session = com.svce.attendance.utils.AttendanceSession(
-            timestamp = now,
-            formattedTime = format.format(Date(now)),
-            rollNumbers = finalRollNumbers.sorted(),
-            confirmations = confirmations.toMap()
-        )
-        com.svce.attendance.utils.SessionStore.saveSession(this@AttendanceActivity, session)
-    }
-
-    private fun showGraceDialog(durationSeconds: Int, onFinish: () -> Unit) {
-        val dialogView = layoutInflater.inflate(R.layout.dialog_grace_countdown, null)
-        val tvCountdown = dialogView.findViewById<TextView>(R.id.tvCountdown)
-        val alertDialog = AlertDialog.Builder(this)
-            .setTitle("Grace Period")
-            .setView(dialogView)
-            .setCancelable(false)
-            .create()
-
-        alertDialog.show()
-
-        var secondsLeft = durationSeconds
-        tvCountdown.text = getString(R.string.finalizing_in_seconds, secondsLeft)
-        val handler = Handler(Looper.getMainLooper())
-        val runnable = object : Runnable {
-            override fun run() {
-                secondsLeft--
-                if (secondsLeft <= 0) {
-                    alertDialog.dismiss()
-                    onFinish()
-                } else {
-                    tvCountdown.text = getString(R.string.finalizing_in_seconds, secondsLeft)
-                    handler.postDelayed(this, 1000)
-                }
+    private fun loadMapping() {
+        val jsonStream: InputStream = assets.open("BLEcode_rollnumber.json")
+        val text = jsonStream.bufferedReader().use { it.readText() }
+        val obj = JSONObject(text)
+        val map = mutableMapOf<Int, String>()
+        val keys = obj.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            key.toIntOrNull()?.let { code ->
+                map[code] = obj.getString(key)
             }
         }
-        handler.postDelayed(runnable, 1000)
+        codeToRoll = map
     }
 
-    private fun promptForRollNumber(onRollEntered: (String) -> Unit) {
-        val input = EditText(this)
-        input.hint = "Enter Roll Number"
-        input.maxLines = 1
-        input.filters = arrayOf(InputFilter.LengthFilter(10))
-        AlertDialog.Builder(this)
-            .setTitle("Your Roll Number")
-            .setMessage("Please enter your 10-character roll number")
-            .setView(input)
-            .setCancelable(false)
-            .setPositiveButton("Save") { d, _ ->
-                val roll = input.text.toString().trim()
-                if (roll.length == 10 && roll.matches(Regex("^[A-Za-z0-9]{10}$"))) {
-                    studentRollNumber = roll
-                    onRollEntered(roll)
-                } else {
-                    Toast.makeText(this, "Invalid roll number!", Toast.LENGTH_SHORT).show()
-                    promptForRollNumber(onRollEntered)
+    private fun startScanning() {
+        presentRolls.clear()
+        adapter.clear()
+        scannerHelper = BleScannerHelper(
+            context = this,
+            serviceUuid = serviceUuid,
+            onCodeFound = { code ->
+                android.util.Log.d("AttendanceActivity", "Scanned BLE code: $code")
+                codeToRoll[code]?.let { roll ->
+                    if (presentRolls.add(roll)) {
+                        runOnUiThread {
+                            adapter.add(roll)
+                            adapter.notifyDataSetChanged()
+                        }
+                    }
+                } ?: run {
+                    // Optional: show a debug toast or log for unmapped codes
+                    android.util.Log.d("AttendanceActivity", "Unmapped BLE code scanned: $code")
                 }
-                d.dismiss()
-            }
-            .show()
+            },
+            onScanFailure = { err ->
+                runOnUiThread {
+                    Toast.makeText(this, "Scan failed: $err", Toast.LENGTH_SHORT).show()
+                }
+            })
+        scannerHelper?.startScanning()
     }
 
-    private fun checkAndRequestBLEPermissions(): Boolean {
-        val toAsk = blePermissions.filter {
+    private fun checkPermissions(): Boolean {
+        val missing = permissions.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
-        return if (toAsk.isEmpty()) true else {
-            ActivityCompat.requestPermissions(this, toAsk.toTypedArray(), bleRequestCode)
+        return if (missing.isEmpty()) true else {
+            ActivityCompat.requestPermissions(this, missing.toTypedArray(), 200)
             false
-        }
-    }
-
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == bleRequestCode) {
-            if (grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
-                Toast.makeText(this, "Bluetooth permissions granted!", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(this, "Bluetooth permissions needed", Toast.LENGTH_LONG).show()
-            }
-        }
-    }
-
-    private fun updateRollList() {
-        rollAdapter?.clear()
-        val toShow = if (recordFinalList) finalRollNumbers else liveRollNumbers
-        val displayList = toShow.sorted().map { roll ->
-            // Since no manual confirmations, no tick marks on teacher side
-            roll
-        }
-        rollAdapter?.addAll(displayList)
-        rollAdapter?.notifyDataSetChanged()
-    }
-
-    private fun showStudentConfirmationUI() {
-        // Find your roll number safely
-        val roll = studentRollNumber ?: return
-
-        // Build and show an AlertDialog instead of a Toast
-        AlertDialog.Builder(this)
-            .setTitle("Attendance Confirmed")
-            .setMessage("Your attendance has been confirmed!\nRoll Number: $roll")
-            .setCancelable(false)
-            .setPositiveButton("OK") { dialog, _ ->
-                dialog.dismiss()
-            }
-            .show()
-    }
-
-    /**
-     * Append a new column (timestamp + P/A) to the teacher’s CSV file.
-     */
-    private fun appendAttendanceColumn(mentorEmail: String, confirmedList: Set<String>) {
-        val file = File(filesDir, "rolls/$mentorEmail.csv")
-        val all = CSVReader(FileReader(file)).readAll()
-        CSVWriter(FileWriter(file)).use { writer ->
-            val now = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault()).format(Date())
-            all[0] = all[0] + arrayOf(now)
-            val updated = mutableListOf<Array<String>>().apply {
-                add(all[0])
-                for (i in 1 until all.size) {
-                    val roll = all[i][0]
-                    val status = if (confirmedList.contains(roll)) "P" else "A"
-                    add(all[i] + arrayOf(status))
-                }
-            }
-            writer.writeAll(updated)
         }
     }
 }

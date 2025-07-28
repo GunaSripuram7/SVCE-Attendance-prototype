@@ -1,7 +1,6 @@
 package com.svce.attendance.ble
 
 import android.annotation.SuppressLint
-import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.AdvertiseCallback
 import android.bluetooth.le.AdvertiseData
@@ -10,6 +9,7 @@ import android.bluetooth.le.BluetoothLeAdvertiser
 import android.content.Context
 import android.os.ParcelUuid
 import android.util.Log
+import java.nio.ByteBuffer
 import java.util.*
 
 @SuppressLint("MissingPermission")
@@ -21,19 +21,26 @@ class BleAdvertiserHelper(
     private var advertiseCallback: AdvertiseCallback? = null
 
     /**
-     * Start BLE advertising with a generic payload string (typically a roll number).
-     * @param payload The string to advertise as service data
+     * Start BLE advertising with a 4-byte integer payload.
+     * @param payloadInt The integer code to advertise as service data
      * @param onSuccess Callback on successful advertising start
      * @param onFailure Callback on failure with error code
      */
-    fun startAdvertising(payload: String, onSuccess: () -> Unit, onFailure: (Int) -> Unit) {
-        val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        val bluetoothAdapter = bluetoothManager.adapter
-        advertiser = bluetoothAdapter.bluetoothLeAdvertiser
+    fun startAdvertising(
+        payloadInt: Int,
+        onSuccess: () -> Unit,
+        onFailure: (Int) -> Unit
+    ) {
+        val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        val adapter = manager.adapter
+        advertiser = adapter.bluetoothLeAdvertiser
+
+        // Convert int to 4-byte array (big-endian)
+        val intBytes = ByteBuffer.allocate(4).putInt(payloadInt).array()
 
         val data = AdvertiseData.Builder()
             .addServiceUuid(ParcelUuid(serviceUuid))
-            .addServiceData(ParcelUuid(serviceUuid), payload.toByteArray(Charsets.UTF_8))
+            .addServiceData(ParcelUuid(serviceUuid), intBytes)
             .setIncludeDeviceName(false)
             .build()
 
@@ -45,12 +52,11 @@ class BleAdvertiserHelper(
 
         advertiseCallback = object : AdvertiseCallback() {
             override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
-                Log.d("BleAdvertiserHelper", "BLE advertising started with payload: $payload")
+                Log.d("BleAdvertiserHelper", "Advertising started, code=$payloadInt")
                 onSuccess()
             }
-
             override fun onStartFailure(errorCode: Int) {
-                Log.e("BleAdvertiserHelper", "BLE advertising failed with error code: $errorCode, payload: $payload")
+                Log.e("BleAdvertiserHelper", "Advertise failed($errorCode), code=$payloadInt")
                 onFailure(errorCode)
             }
         }
@@ -58,9 +64,7 @@ class BleAdvertiserHelper(
         advertiser?.startAdvertising(settings, data, advertiseCallback)
     }
 
-    /**
-     * Stop any ongoing BLE advertising.
-     */
+    /** Stop any ongoing BLE advertising. */
     fun stopAdvertising() {
         advertiser?.stopAdvertising(advertiseCallback)
     }

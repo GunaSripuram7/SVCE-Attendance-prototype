@@ -1,80 +1,53 @@
 package com.svce.attendance.ble
 
-import android.Manifest
-import android.bluetooth.BluetoothManager
-import android.bluetooth.le.BluetoothLeScanner
+import android.annotation.SuppressLint
 import android.bluetooth.le.ScanCallback
-import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
-import android.bluetooth.le.ScanSettings
 import android.content.Context
-import android.content.pm.PackageManager
-import android.os.Handler
-import android.os.Looper
 import android.os.ParcelUuid
-import android.util.Log
-import androidx.core.content.ContextCompat
+import java.nio.ByteBuffer
 import java.util.*
 
+@SuppressLint("MissingPermission")
 class BleScannerHelper(
     private val context: Context,
-    private val serviceUuid: UUID
+    private val serviceUuid: UUID,
+    private val onCodeFound: (Int) -> Unit,
+    private val onScanFailure: (Int) -> Unit
 ) {
-    private var scanner: BluetoothLeScanner? = null
-    private var scanCallback: ScanCallback? = null
+    private val scanner = (context.getSystemService(Context.BLUETOOTH_SERVICE) as android.bluetooth.BluetoothManager)
+        .adapter.bluetoothLeScanner
 
-    fun startScan(onDeviceFound: (roll: String) -> Unit, onScanFailure: (Int) -> Unit = {}) {
-        val hasBleScanPermission = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-            ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED
-        } else {
-            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        }
+    private val filters = listOf(android.bluetooth.le.ScanFilter.Builder()
+        .setServiceUuid(ParcelUuid(serviceUuid))
+        .build())
 
-        if (!hasBleScanPermission) {
-            onScanFailure(-1)
-            return
-        }
+    private val settings = android.bluetooth.le.ScanSettings.Builder()
+        .setScanMode(android.bluetooth.le.ScanSettings.SCAN_MODE_LOW_LATENCY)
+        .build()
 
-        try {
-            val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-            val bluetoothAdapter = bluetoothManager.adapter
-            scanner = bluetoothAdapter.bluetoothLeScanner
-
-            val filter = ScanFilter.Builder()
-                .setServiceUuid(ParcelUuid(serviceUuid))
-                .build()
-            val setting = ScanSettings.Builder()
-                .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-                .build()
-            scanCallback = object : ScanCallback() {
-                override fun onScanResult(callbackType: Int, result: ScanResult?) {
-                    result?.scanRecord?.getServiceData(ParcelUuid(serviceUuid))?.let { data ->
-                        val roll = data.toString(Charsets.UTF_8)
-                        Log.d("BleScannerHelper", "Got BLE: $roll")
-                        Handler(Looper.getMainLooper()).post {
-                            onDeviceFound(roll)
-                        }
+    private val callback = object : ScanCallback() {
+        override fun onScanResult(callbackType: Int, result: ScanResult) {
+            result.scanRecord
+                ?.serviceData
+                ?.get(ParcelUuid(serviceUuid))
+                ?.let { data ->
+                    if (data.size >= 4) {
+                        // Decode little‐endian 4-byte integer
+                        val code = ByteBuffer.wrap(data).int
+                        onCodeFound(code)
                     }
                 }
-
-                override fun onScanFailed(errorCode: Int) {
-                    onScanFailure(errorCode)
-                }
-            }
-
-            scanner?.startScan(listOf(filter), setting, scanCallback)
-        } catch (e: SecurityException) {
-            e.printStackTrace()
-            onScanFailure(-1)
+        }
+        override fun onScanFailed(errorCode: Int) {
+            onScanFailure(errorCode)
         }
     }
 
-    fun stopScan() {
-        try {
-            scanner?.stopScan(scanCallback)
-        } catch (e: SecurityException) {
-            e.printStackTrace()
-        }
-        scanCallback = null
+    fun startScanning() {
+        scanner.startScan(filters, settings, callback)
+    }
+    fun stopScanning() {
+        scanner.stopScan(callback)
     }
 }
