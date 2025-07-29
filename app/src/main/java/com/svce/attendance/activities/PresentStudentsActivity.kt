@@ -18,6 +18,7 @@ import java.io.FileWriter
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 
@@ -67,6 +68,12 @@ class PresentStudentsActivity : AppCompatActivity() {
                     markAsPresent(roll)
                     presentRolls.add(roll)  // Update local list
                     rvRollList.adapter?.notifyDataSetChanged()  // Refresh RecyclerView
+    
+                    // POST *after* updating the list
+                    postAttendanceToSheet(sessionTime, presentRolls) { success ->
+                        val message = if (success) "Attendance updated in Google Sheet!" else "Failed to update Google Sheet."
+                        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+                    }
                     Toast.makeText(this, "$roll marked as present", Toast.LENGTH_SHORT).show()
                 } else {
                     Toast.makeText(this, "Invalid or unassigned roll number", Toast.LENGTH_SHORT).show()
@@ -89,32 +96,34 @@ class PresentStudentsActivity : AppCompatActivity() {
         }
     }
 
-    private fun postAttendanceToSheet(session: String, rollNumbers: List<String>, onResult: (Boolean) -> Unit) {
-        val url = "https://script.google.com/macros/s/AKfycbylrykRGRMxN_GxFcs3SgLnhaRpOpvSmtVQBO4Vankkt6BtquPI5s737q_typdvLNPb/exec"
-        val client = OkHttpClient()
-    
-        val json = JSONObject()
-        json.put("session", session)
-        json.put("rollNumbers", rollNumbers)
-    
-        val body = json.toString()
-            .toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
-    
-        val request = Request.Builder()
-            .url(url)
-            .post(body)
-            .build()
-    
-        client.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                runOnUiThread { onResult(false) }
-            }
-    
-            override fun onResponse(call: Call, response: Response) {
-                val isSuccess = response.isSuccessful && response.body?.string()?.contains("\"status\":\"success\"") == true
-                runOnUiThread { onResult(isSuccess) }
-            }
-        })
+   private fun postAttendanceToSheet(session: String, rollNumbers: List<String>, onResult: (Boolean) -> Unit) {
+    val url = "https://script.google.com/macros/s/AKfycbyq0ZxzXLEYYGwaKW_u4rqC9fn154H6tm1omXfWsap9f5mLZCDKpPrp9J5DfMstiMZh/exec"
+    val client = OkHttpClient()
+
+    val json = JSONObject()
+    json.put("session", session)
+    json.put("rollNumbers", JSONArray(rollNumbers))
+
+    val body = RequestBody.create(
+        "application/json; charset=utf-8".toMediaTypeOrNull(),
+        json.toString()
+    )
+
+    val request = Request.Builder()
+        .url(url)
+        .post(body)
+        .build()
+
+    client.newCall(request).enqueue(object : Callback {
+        override fun onFailure(call: Call, e: IOException) {
+            runOnUiThread { onResult(false) }
+        }
+
+        override fun onResponse(call: Call, response: Response) {
+            val isSuccess = response.isSuccessful && response.body?.string()?.contains("\"status\":\"success\"") == true
+            runOnUiThread { onResult(isSuccess) }
+        }
+     })
     }
 
     // Update CSV: Find session column by timestamp and set "P" for the roll
@@ -141,12 +150,8 @@ class PresentStudentsActivity : AppCompatActivity() {
         }
 
         postAttendanceToSheet(sessionTime, presentRolls) { success ->
-        val message = if (success) "Attendance updated in Google Sheet!" else "Failed to update Google Sheet."
-        AlertDialog.Builder(this)
-            .setTitle(if (success) "Success" else "Failure")
-            .setMessage(message)
-            .setPositiveButton("OK", null)
-            .show()
+            val message = if (success) "Attendance updated in Google Sheet!" else "Failed to update Google Sheet."
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
         }
     }
 
