@@ -81,4 +81,13 @@
         android:layout_weight="1"
         android:layout_marginTop="16dp" />
 
+    <TextView
+        android:id="@+id/tvRollCount"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="0 roll numbers visible"
+        android:textSize="16sp"
+        android:layout_marginTop="8dp"
+        android:textStyle="bold" />
+
 </LinearLayout>

@@ -42,7 +42,7 @@ class AttendanceActivity : AppCompatActivity() {
     private var advertiserHelper: BleAdvertiserHelper? = null
     private var hasSubmittedCodeThisSession = false
 
-
+    private lateinit var tvRollCount: TextView
     private lateinit var bleCodeContainer: LinearLayout
     private lateinit var etBleCode: EditText
 
@@ -100,6 +100,7 @@ class AttendanceActivity : AppCompatActivity() {
                     adapter.clear()
                     adapter.addAll(presentRolls.sorted())
                     adapter.notifyDataSetChanged()
+                    updateRollCount()
                 }
             }
             handler.postDelayed(this, cleanupIntervalMillis)
@@ -125,6 +126,8 @@ class AttendanceActivity : AppCompatActivity() {
         listView = findViewById(R.id.listRolls)
         adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, ArrayList())
         listView.adapter = adapter
+        tvRollCount = findViewById(R.id.tvRollCount)
+
 
         role = intent.getStringExtra("role") ?: ""
         tvRole.text = getString(R.string.attendance_as, role)
@@ -277,6 +280,7 @@ class AttendanceActivity : AppCompatActivity() {
                         adapter.clear()
                         adapter.addAll(presentRolls.sorted())
                         adapter.notifyDataSetChanged()
+                        updateRollCount()
 
                         Log.d("Attendance",
                             "Grace ended. Final rolls: $presentRolls")
@@ -351,8 +355,10 @@ class AttendanceActivity : AppCompatActivity() {
                         val isNew = presentRolls.add(roll)
                         if (isNew) {
                             runOnUiThread {
-                                adapter.add(roll)
+                                adapter.clear()
+                                adapter.addAll(presentRolls.sorted())
                                 adapter.notifyDataSetChanged()
+                                updateRollCount()
                             }
                         }
                     }
@@ -527,5 +533,9 @@ class AttendanceActivity : AppCompatActivity() {
                 key.toIntOrNull()?.let { code -> code to obj.getString(key) }
             }
             .toMap()
+    }
+    private fun updateRollCount() {
+        val visibleCount = presentRolls.size
+        tvRollCount.text = "roll numbers $visibleCount visible"
     }
 }
