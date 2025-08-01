@@ -2,6 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Always declare legacy Bluetooth permissions for backward compatibility -->
     <uses-permission android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
@@ -24,6 +25,7 @@
         android:required="true" />
 
     <application
+        android:name=".ApplicationClass"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -51,7 +53,9 @@
             android:exported="false"/>
         <activity android:name=".activities.SessionDetailActivity"
             android:exported="false"/>
-        <activity android:name=".activities.PresentStudentsActivity" />
+        <activity android:name=".activities.PresentStudentsActivity"
+            android:exported="false"/>
 
     </application>
+
 </manifest>

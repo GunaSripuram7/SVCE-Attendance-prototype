@@ -15,7 +15,17 @@
           <targets>
             <Target type="DEFAULT_BOOT">
               <handle>
+                <DeviceId pluginId="PhysicalDevice" identifier="serial=RZCY41CADSH" />
+              </handle>
+            </Target>
+            <Target type="DEFAULT_BOOT">
+              <handle>
                 <DeviceId pluginId="PhysicalDevice" identifier="serial=3080384598000DY" />
+              </handle>
+            </Target>
+            <Target type="DEFAULT_BOOT">
+              <handle>
+                <DeviceId pluginId="PhysicalDevice" identifier="serial=5665d819" />
               </handle>
             </Target>
             <Target type="DEFAULT_BOOT">

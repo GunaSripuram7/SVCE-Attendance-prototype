@@ -1,6 +1,9 @@
 plugins {
+
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
+
+
 }
 
 android {
@@ -37,7 +40,10 @@ android {
 
 
 dependencies {
-    
+    implementation("com.onesignal:OneSignal:[5.1.6, 5.1.99]")
+    implementation("com.squareup.okhttp3:okhttp:4.11.0")
+    implementation("com.squareup.moshi:moshi-kotlin:1.15.0")
+
     implementation("com.google.code.gson:gson:2.13.1")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
@@ -47,4 +53,8 @@ dependencies {
     androidTestImplementation(libs.androidx.espresso.core)
     // CSV reading/writing library
     implementation("com.opencsv:opencsv:5.5.2")
+
+
+
+
 }
