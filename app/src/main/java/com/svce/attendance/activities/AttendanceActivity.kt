@@ -1,5 +1,6 @@
 package com.svce.attendance.activities
 
+import androidx.activity.OnBackPressedCallback
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -203,9 +204,11 @@ class AttendanceActivity : AppCompatActivity() {
                     return@setOnClickListener
                 }
 
-                if (advertiserHelper == null) {
-                    advertiserHelper = BleAdvertiserHelper(this, serviceUuid)
-                }
+                // Always stop any existing advertiser before starting a new one
+                advertiserHelper?.stopAdvertising()
+                advertiserHelper = null
+
+                advertiserHelper = BleAdvertiserHelper(this, serviceUuid)
                 advertiserHelper?.startAdvertising(
                     payloadInt = code,
                     onSuccess = {
@@ -225,6 +228,7 @@ class AttendanceActivity : AppCompatActivity() {
             btnStart.isEnabled = false
             btnStop.isEnabled = true
         }
+
 
 
         var isInGracePeriod = false
@@ -304,6 +308,10 @@ class AttendanceActivity : AppCompatActivity() {
             } else if (role == "student") {
 
                 advertiserHelper?.stopAdvertising()
+                advertiserHelper = null
+                savedBleCode = null
+                btnSaveCode.isEnabled = true
+                hasSubmittedCodeThisSession = false
                 Toast.makeText(
                     this,
                     "Student stopped broadcasting.",
@@ -318,7 +326,33 @@ class AttendanceActivity : AppCompatActivity() {
 
 
         btnStop.isEnabled = false
+
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (role == "student") {
+                    advertiserHelper?.stopAdvertising()
+                    advertiserHelper = null
+                    savedBleCode = null
+                    btnSaveCode.isEnabled = true
+                    hasSubmittedCodeThisSession = false
+                    Toast.makeText(this@AttendanceActivity, "BLE advertising stopped", Toast.LENGTH_SHORT).show()
+                }
+                finish()  // Close the activity
+            }
+        })
     }
+
+ /*   override fun onBackPressed() {
+        if (role == "student") {
+            advertiserHelper?.stopAdvertising()
+            advertiserHelper = null
+            savedBleCode = null
+            btnSaveCode.isEnabled = true
+            hasSubmittedCodeThisSession = false
+            Toast.makeText(this, "BLE advertising stopped", Toast.LENGTH_SHORT).show()
+        }
+        super.onBackPressed()
+    } */
 
     private fun loadMapping() {
         val jsonStream: InputStream = assets.open("BLEcode_rollnumber.json")
