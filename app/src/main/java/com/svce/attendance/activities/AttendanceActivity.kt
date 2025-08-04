@@ -1,5 +1,18 @@
 package com.svce.attendance.activities
 
+
+import no.nordicsemi.android.mesh.provisionerstates.UnprovisionedMeshNode
+import no.nordicsemi.android.mesh.provisionerstates.ProvisioningState
+import no.nordicsemi.android.mesh.transport.ProvisionedMeshNode
+import no.nordicsemi.android.mesh.transport.ControlMessage
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanFilter
+import android.bluetooth.le.ScanResult
+import android.bluetooth.le.ScanSettings
+import android.os.ParcelUuid
+
+import com.svce.attendance.mesh.MeshProxyBleManager
 import androidx.activity.OnBackPressedCallback
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -36,12 +49,21 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 
 
-class AttendanceActivity : AppCompatActivity() {
+class AttendanceActivity : AppCompatActivity(),
+    no.nordicsemi.android.mesh.MeshManagerCallbacks,
+    no.nordicsemi.android.mesh.MeshProvisioningStatusCallbacks,
+    no.nordicsemi.android.mesh.MeshStatusCallbacks {
 
     private val serviceUuid = UUID.fromString("0000fd00-0000-1000-8000-00805f9b34fb")
-    private var scannerHelper: BleScannerHelper? = null
-    private var advertiserHelper: BleAdvertiserHelper? = null
+  //  private var scannerHelper: BleScannerHelper? = null
+   // private var advertiserHelper: BleAdvertiserHelper? = null
+  // Add mesh variables:
+    private var meshProxyManager: MeshProxyBleManager? = null
+    private var isTeacherProvisioner = false
+    private val provisionedNodes = mutableListOf<ProvisionedMeshNode>()
     private var hasSubmittedCodeThisSession = false
+    private lateinit var meshManagerApi: no.nordicsemi.android.mesh.MeshManagerApi
+    private var meshNetwork: no.nordicsemi.android.mesh.MeshNetwork? = null
 
     private lateinit var tvRollCount: TextView
     private lateinit var bleCodeContainer: LinearLayout
@@ -110,8 +132,14 @@ class AttendanceActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         setContentView(R.layout.activity_attendance)
+
+        meshManagerApi = no.nordicsemi.android.mesh.MeshManagerApi(this)
+        meshManagerApi.setMeshManagerCallbacks(this)
+        meshManagerApi.setProvisioningStatusCallbacks(this)
+        meshManagerApi.setMeshStatusCallbacks(this)
+        meshManagerApi.loadMeshNetwork()
+
         lifecycleScope.launch {
             OneSignal.Notifications.requestPermission(true)
         }
@@ -196,7 +224,14 @@ class AttendanceActivity : AppCompatActivity() {
             if (!checkPermissions()) return@setOnClickListener
 
             if (role == "teacher") {
-                startScanning() // ONLY scan
+                // TEACHER: Start mesh provisioning
+                Toast.makeText(this, "Ready to provision students into mesh!", Toast.LENGTH_SHORT).show()
+                // Here, you could trigger a scan and connect to a student's device for provisioning,
+                // then instantiate MeshProxyBleManager as needed.
+                // Example:
+                // val deviceAddress = ... // MAC address of student node from scan
+                // meshProxyManager = MeshProxyBleManager(..., deviceAddress = deviceAddress, ...)
+                // meshProxyManager?.connect()
             } else if (role == "student") {
                 val code = savedBleCode
                 if (code == null) {
@@ -204,30 +239,23 @@ class AttendanceActivity : AppCompatActivity() {
                     return@setOnClickListener
                 }
 
-                // Always stop any existing advertiser before starting a new one
-                advertiserHelper?.stopAdvertising()
-                advertiserHelper = null
+                val roll = codeToRollMap[code]
+                if (roll != null) {
+                    // --- INITIATE CONNECTION TO TEACHER'S PROXY NODE ----
+                    scanForMeshProxyDevices()
 
-                advertiserHelper = BleAdvertiserHelper(this, serviceUuid)
-                advertiserHelper?.startAdvertising(
-                    payloadInt = code,
-                    onSuccess = {
-                        runOnUiThread {
-                            tvRole.text = getString(R.string.advertising_code, code)
-                        }
-                        Toast.makeText(this, "Advertising started for code $code", Toast.LENGTH_SHORT).show()
-                    },
-                    onFailure = { errorCode ->
-                        runOnUiThread {
-                            Toast.makeText(this, "Advertising failed with error code $errorCode", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                )
+
+                    Toast.makeText(this, "Connecting via Mesh Proxy... ($roll)", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "Unknown BLE code—cannot send attendance.", Toast.LENGTH_SHORT).show()
+                }
             }
 
             btnStart.isEnabled = false
             btnStop.isEnabled = true
         }
+
+
 
 
 
@@ -273,7 +301,7 @@ class AttendanceActivity : AppCompatActivity() {
                         isInGracePeriod = false
 
                         // Stop BLE scan and housekeeping timer
-                        scannerHelper?.stopScanning()
+                        //scannerHelper?.stopScanning()
                         stopCleanup()
 
                         val finalSet = presentRolls + gracePeriodRolls
@@ -307,8 +335,8 @@ class AttendanceActivity : AppCompatActivity() {
                 /********  STUDENT  *********/
             } else if (role == "student") {
 
-                advertiserHelper?.stopAdvertising()
-                advertiserHelper = null
+                //advertiserHelper?.stopAdvertising()
+                // advertiserHelper = null
                 savedBleCode = null
                 btnSaveCode.isEnabled = true
                 hasSubmittedCodeThisSession = false
@@ -330,8 +358,9 @@ class AttendanceActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (role == "student") {
-                    advertiserHelper?.stopAdvertising()
-                    advertiserHelper = null
+
+                    //advertiserHelper?.stopAdvertising()
+                    //advertiserHelper = null
                     savedBleCode = null
                     btnSaveCode.isEnabled = true
                     hasSubmittedCodeThisSession = false
@@ -342,17 +371,73 @@ class AttendanceActivity : AppCompatActivity() {
         })
     }
 
- /*   override fun onBackPressed() {
-        if (role == "student") {
-            advertiserHelper?.stopAdvertising()
-            advertiserHelper = null
-            savedBleCode = null
-            btnSaveCode.isEnabled = true
-            hasSubmittedCodeThisSession = false
-            Toast.makeText(this, "BLE advertising stopped", Toast.LENGTH_SHORT).show()
+
+    private fun scanForMeshProxyDevices() {
+        if (ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.BLUETOOTH_SCAN
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            Toast.makeText(this, "Bluetooth scan permission not granted", Toast.LENGTH_SHORT).show()
+            // Prompt user for permission, or just return for now.
+            return
         }
-        super.onBackPressed()
-    } */
+
+        val scanner = BluetoothAdapter.getDefaultAdapter().bluetoothLeScanner
+        val meshProxyUuid =
+            ParcelUuid(UUID.fromString("00001828-0000-1000-8000-00805f9b34fb")) // Mesh Proxy Service UUID
+
+        val filters = listOf(
+            ScanFilter.Builder()
+                .setServiceUuid(meshProxyUuid)
+                .build()
+        )
+        val settings = ScanSettings.Builder()
+            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+            .build()
+
+        try {
+            scanner.startScan(filters, settings, object : ScanCallback() {
+                override fun onScanResult(callbackType: Int, result: ScanResult) {
+                    if (ContextCompat.checkSelfPermission(
+                            this@AttendanceActivity,
+                            Manifest.permission.BLUETOOTH_CONNECT
+                        )
+                        == PackageManager.PERMISSION_GRANTED
+                    ) {
+                        Log.d(
+                            "MeshScan",
+                            "Found mesh proxy: ${result.device.address} (${result.device.name})"
+                        )
+                        // Use result.device.address as needed for connection
+                    } else {
+                        Toast.makeText(
+                            this@AttendanceActivity,
+                            "No Bluetooth connect permission for device address",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+
+                override fun onScanFailed(errorCode: Int) {
+                    Log.e("MeshScan", "Scan failed: $errorCode")
+                }
+            })
+        } catch (e: SecurityException) {
+            Toast.makeText(this, "Bluetooth scan permission denied", Toast.LENGTH_SHORT).show()
+        }
+    }
+    /*   override fun onBackPressed() {
+           if (role == "student") {
+               advertiserHelper?.stopAdvertising()
+               advertiserHelper = null
+               savedBleCode = null
+               btnSaveCode.isEnabled = true
+               hasSubmittedCodeThisSession = false
+               Toast.makeText(this, "BLE advertising stopped", Toast.LENGTH_SHORT).show()
+           }
+           super.onBackPressed()
+       } */
 
     private fun loadMapping() {
         val jsonStream: InputStream = assets.open("BLEcode_rollnumber.json")
@@ -375,7 +460,7 @@ class AttendanceActivity : AppCompatActivity() {
         lastSeenMap.clear()
         adapter.clear()
 
-        scannerHelper = BleScannerHelper(
+        /* scannerHelper = BleScannerHelper(
             context = this,
             serviceUuid = serviceUuid,
             onDeviceFound = { code: Int ->
@@ -403,8 +488,8 @@ class AttendanceActivity : AppCompatActivity() {
                     Toast.makeText(this, "Scan failed: $err", Toast.LENGTH_SHORT).show()
                 }
             }
-        )
-        scannerHelper?.startScanning()
+        ) */
+        // scannerHelper?.startScanning()
         startCleanup()
     }
 
@@ -572,4 +657,88 @@ class AttendanceActivity : AppCompatActivity() {
         val visibleCount = presentRolls.size
         tvRollCount.text = "roll numbers $visibleCount visible"
     }
+    // MeshManagerCallbacks
+    override fun onNetworkLoaded(meshNetwork: no.nordicsemi.android.mesh.MeshNetwork) {
+        this.meshNetwork = meshNetwork
+        Log.d("Mesh", "Network loaded")
+    }
+    override fun onNetworkUpdated(meshNetwork: no.nordicsemi.android.mesh.MeshNetwork) {
+        this.meshNetwork = meshNetwork
+    }
+    override fun onNetworkLoadFailed(error: String?) { }
+    override fun onNetworkImported(meshNetwork: no.nordicsemi.android.mesh.MeshNetwork) { }
+    override fun onNetworkImportFailed(error: String?) { }
+
+    override fun getMtu(): Int {
+        // Return the MTU size for your BLE link, or a typical default.
+        // 517 is maximum for Bluetooth 4.2+, 23 is Bluetooth default.
+        return 517
+    }
+
+    // MeshProvisioningStatusCallbacks
+    override fun onProvisioningStateChanged(
+        meshNode: UnprovisionedMeshNode,
+        state: ProvisioningState.States,
+        data: ByteArray?
+    ) {}
+
+    override fun onProvisioningFailed(
+        meshNode: UnprovisionedMeshNode,
+        state: ProvisioningState.States,
+        data: ByteArray?
+    ) { /* ... */ }
+
+    override fun onProvisioningCompleted(
+        meshNode: ProvisionedMeshNode,
+        state: ProvisioningState.States,
+        data: ByteArray?
+    ) { /* ... */ }
+
+
+
+    // MeshStatusCallbacks
+    override fun onTransactionFailed(dst: Int, hasIncompleteTimerExpired: Boolean) { }
+    override fun onUnknownPduReceived(src: Int, accessPayload: ByteArray) { }
+    override fun onBlockAcknowledgementProcessed(dst: Int, message: no.nordicsemi.android.mesh.transport.ControlMessage) { }
+    override fun onBlockAcknowledgementReceived(src: Int, message: no.nordicsemi.android.mesh.transport.ControlMessage) { }
+    // Typical meshSend callback, called when meshManagerApi wants you to send a PDU:
+    override fun onMeshPduCreated(pdu: ByteArray) {
+        meshProxyManager?.writeMeshPdu(pdu)
+    }
+
+    override fun sendProvisioningPdu(meshNode: UnprovisionedMeshNode, pdu: ByteArray) {
+        // handle PDU send over BLE here, e.g. with your MeshProxyBleManager
+        meshProxyManager?.writeMeshPdu(pdu)
+    }
+
+    override fun onHeartbeatMessageReceived(src: Int, message: ControlMessage) {
+        Log.d("Mesh", "Mesh heartbeat received from $src: $message")
+    }
+
+    override fun onMeshMessageProcessed(dst: Int, meshMessage: no.nordicsemi.android.mesh.transport.MeshMessage) { }
+
+    override fun onMessageDecryptionFailed(meshLayer: String, errorMessage: String) {
+        // Log or handle decryption failure here, optional for most apps
+        Log.e("Mesh", "Message decryption failed at layer $meshLayer: $errorMessage")
+    }
+
+    override fun onMeshMessageReceived(src: Int, meshMessage: no.nordicsemi.android.mesh.transport.MeshMessage) {
+        Log.d("Mesh", "Mesh message received from: $src")
+        // Example: parse roll from message (or use src as identifier)
+        // Here, you might use meshMessage (if it's GenericOnOffSet or vendor) to extract roll/state info!
+
+        // For simple demo/prototype:
+        val roll = "ROLL_$src" // (You would map src to roll number using a central record or included state!)
+
+        runOnUiThread {
+            if (presentRolls.add(roll)) {
+                adapter.clear()
+                adapter.addAll(presentRolls.sorted())
+                adapter.notifyDataSetChanged()
+                updateRollCount()
+            }
+        }
+    }
+
+
 }

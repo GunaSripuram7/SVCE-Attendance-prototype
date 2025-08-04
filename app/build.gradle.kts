@@ -40,9 +40,13 @@ android {
 
 
 dependencies {
+
+    //implementation("com.github.NordicSemiconductor:Android-nRF-Mesh-Library:v3.3.7")
+    implementation("no.nordicsemi.android:mesh:3.3.7")
     implementation("com.onesignal:OneSignal:[5.1.6, 5.1.99]")
     implementation("com.squareup.okhttp3:okhttp:4.11.0")
     implementation("com.squareup.moshi:moshi-kotlin:1.15.0")
+
 
     implementation("com.google.code.gson:gson:2.13.1")
     implementation(libs.androidx.core.ktx)
