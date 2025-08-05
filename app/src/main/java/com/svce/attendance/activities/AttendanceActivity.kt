@@ -11,6 +11,8 @@ import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.os.ParcelUuid
+import androidx.appcompat.app.AlertDialog
+
 
 import com.svce.attendance.mesh.MeshProxyBleManager
 import androidx.activity.OnBackPressedCallback
@@ -48,11 +50,19 @@ import java.io.FileReader
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 
+data class UnprovNodeWithAddress(
+    val node: UnprovisionedMeshNode,
+    val mac: String
+)
 
 class AttendanceActivity : AppCompatActivity(),
     no.nordicsemi.android.mesh.MeshManagerCallbacks,
     no.nordicsemi.android.mesh.MeshProvisioningStatusCallbacks,
     no.nordicsemi.android.mesh.MeshStatusCallbacks {
+
+    private val discoveredDevices = mutableListOf<ScanResult>()
+    private var meshScanCallback: ScanCallback? = null
+
 
     private val serviceUuid = UUID.fromString("0000fd00-0000-1000-8000-00805f9b34fb")
   //  private var scannerHelper: BleScannerHelper? = null
@@ -65,9 +75,13 @@ class AttendanceActivity : AppCompatActivity(),
     private lateinit var meshManagerApi: no.nordicsemi.android.mesh.MeshManagerApi
     private var meshNetwork: no.nordicsemi.android.mesh.MeshNetwork? = null
 
+    private val unprovisionedNodes = mutableListOf<UnprovNodeWithAddress>()
+
     private lateinit var tvRollCount: TextView
     private lateinit var bleCodeContainer: LinearLayout
     private lateinit var etBleCode: EditText
+
+    private val TAG = "AttendanceActivity"
 
     private lateinit var btnSaveCode: Button
     private lateinit var btnStart: Button
@@ -77,6 +91,8 @@ class AttendanceActivity : AppCompatActivity(),
     private lateinit var adapter: ArrayAdapter<String>
     private var isInGracePeriod = false
     private val gracePeriodRolls = mutableSetOf<String>()
+
+
 
     private lateinit var codeToRollMap: Map<Int, String>
     // Set of currently present roll numbers
@@ -379,14 +395,13 @@ class AttendanceActivity : AppCompatActivity(),
             ) != PackageManager.PERMISSION_GRANTED
         ) {
             Toast.makeText(this, "Bluetooth scan permission not granted", Toast.LENGTH_SHORT).show()
-            // Prompt user for permission, or just return for now.
             return
         }
 
-        val scanner = BluetoothAdapter.getDefaultAdapter().bluetoothLeScanner
-        val meshProxyUuid =
-            ParcelUuid(UUID.fromString("00001828-0000-1000-8000-00805f9b34fb")) // Mesh Proxy Service UUID
+        discoveredDevices.clear() // Start fresh each time
 
+        val scanner = BluetoothAdapter.getDefaultAdapter().bluetoothLeScanner
+        val meshProxyUuid = ParcelUuid(UUID.fromString("00001828-0000-1000-8000-00805f9b34fb"))
         val filters = listOf(
             ScanFilter.Builder()
                 .setServiceUuid(meshProxyUuid)
@@ -396,37 +411,44 @@ class AttendanceActivity : AppCompatActivity(),
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
             .build()
 
-        try {
-            scanner.startScan(filters, settings, object : ScanCallback() {
-                override fun onScanResult(callbackType: Int, result: ScanResult) {
-                    if (ContextCompat.checkSelfPermission(
-                            this@AttendanceActivity,
-                            Manifest.permission.BLUETOOTH_CONNECT
-                        )
-                        == PackageManager.PERMISSION_GRANTED
-                    ) {
-                        Log.d(
-                            "MeshScan",
-                            "Found mesh proxy: ${result.device.address} (${result.device.name})"
-                        )
-                        // Use result.device.address as needed for connection
-                    } else {
-                        Toast.makeText(
-                            this@AttendanceActivity,
-                            "No Bluetooth connect permission for device address",
-                            Toast.LENGTH_SHORT
-                        ).show()
+        // Keep a reference so we can stopScan later
+        meshScanCallback = object : ScanCallback() {
+            override fun onScanResult(callbackType: Int, result: ScanResult) {
+                if (ContextCompat.checkSelfPermission(
+                        this@AttendanceActivity,
+                        Manifest.permission.BLUETOOTH_CONNECT
+                    ) == PackageManager.PERMISSION_GRANTED
+                ) {
+                    // ADD THIS: If you are currently in "provisioning" mode (teacher),
+                    // Try to parse the result as an unprovisioned node
+                    //val newNode: UnprovisionedMeshNode? = parseUnprovisionedNode(result)
+                    /* if (newNode != null) {
+                        // Check if not already stored, then add and show
+                        onUnprovisionedMeshNodeFound(newNode, result)
+                        return
+                    }
+                    */
+                    // ELSE, original mesh proxy device scan logic as before
+                    if (discoveredDevices.none { it.device.address == result.device.address }) {
+                        discoveredDevices.add(result)
+                        showScanResultsDialog()
                     }
                 }
+            }
 
-                override fun onScanFailed(errorCode: Int) {
-                    Log.e("MeshScan", "Scan failed: $errorCode")
-                }
-            })
+            override fun onScanFailed(errorCode: Int) {
+                Log.e("MeshScan", "Scan failed: $errorCode")
+            }
+        }
+
+
+        try {
+            scanner.startScan(filters, settings, meshScanCallback)
         } catch (e: SecurityException) {
             Toast.makeText(this, "Bluetooth scan permission denied", Toast.LENGTH_SHORT).show()
         }
     }
+
     /*   override fun onBackPressed() {
            if (role == "student") {
                advertiserHelper?.stopAdvertising()
@@ -438,6 +460,89 @@ class AttendanceActivity : AppCompatActivity(),
            }
            super.onBackPressed()
        } */
+    private fun showScanResultsDialog() {
+        if (discoveredDevices.isEmpty()) return
+
+        // Check permission before accessing BLE device address
+        val hasBluetoothConnect = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.BLUETOOTH_CONNECT
+        ) == PackageManager.PERMISSION_GRANTED
+
+        val names = discoveredDevices.map {
+            val name = it.device.name ?: "Unknown"
+            val address = if (hasBluetoothConnect) it.device.address else "No Permission"
+            "$name ($address)"
+        }.toTypedArray()
+
+        AlertDialog.Builder(this)
+            .setTitle("Pick Mesh Proxy Device")
+            .setItems(names) { _: android.content.DialogInterface, which: Int ->
+                // We also need the permission here when the user selects:
+                if (hasBluetoothConnect) {
+                    val address = discoveredDevices[which].device.address
+                    connectToMeshProxy(address)
+                } else {
+                    Toast.makeText(this, "No Bluetooth connect permission for device address", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showUnprovisionedNodesDialog() {
+        if (unprovisionedNodes.isEmpty()) return
+        val names = unprovisionedNodes.mapIndexed { idx, entry ->
+            "Node $idx (${entry.mac})"
+        }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("Select Device to Provision")
+            .setItems(names) { _, which ->
+                val selectedEntry = unprovisionedNodes[which]
+                startProvisioningUnprovisionedStudent(selectedEntry)
+                // ^ Pass the whole entry (node+mac) so provisioning is correct!
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+
+    // Add here!
+    private fun onUnprovisionedMeshNodeFound(node: UnprovisionedMeshNode, scanResult: ScanResult) {
+        if (unprovisionedNodes.none { it.mac == scanResult.device.address }) {
+            unprovisionedNodes.add(UnprovNodeWithAddress(node, scanResult.device.address))
+            showUnprovisionedNodesDialog()
+        }
+    }
+
+
+
+    private fun connectToMeshProxy(address: String) {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN)
+            == PackageManager.PERMISSION_GRANTED
+        ) {
+            BluetoothAdapter.getDefaultAdapter().bluetoothLeScanner.stopScan(meshScanCallback)
+        }
+
+        meshProxyManager = MeshProxyBleManager(
+            context = this,
+            meshManagerApi = meshManagerApi,
+            deviceAddress = address,
+            onConnected = {
+                runOnUiThread {
+                    Toast.makeText(this, "Connected to Mesh Proxy.", Toast.LENGTH_SHORT).show()
+                }
+                trySendAttendanceMeshMessage() // <--- use new robust wrapper here!
+            },
+            onDisconnected = {
+                runOnUiThread { Toast.makeText(this, "Disconnected from Mesh Proxy.", Toast.LENGTH_SHORT).show() }
+            },
+            onError = { msg ->
+                runOnUiThread { Toast.makeText(this, msg, Toast.LENGTH_SHORT).show() }
+            }
+        )
+        meshProxyManager?.connect()
+    }
 
     private fun loadMapping() {
         val jsonStream: InputStream = assets.open("BLEcode_rollnumber.json")
@@ -692,7 +797,11 @@ class AttendanceActivity : AppCompatActivity(),
         meshNode: ProvisionedMeshNode,
         state: ProvisioningState.States,
         data: ByteArray?
-    ) { /* ... */ }
+    ) {
+        Log.d(TAG, "Node provisioned: ${meshNode.nodeName}")
+        configureRelayForNode(meshNode) // Enable relay if desired
+        onNodeProvisioned(meshNode)
+    }
 
 
 
@@ -704,6 +813,29 @@ class AttendanceActivity : AppCompatActivity(),
     // Typical meshSend callback, called when meshManagerApi wants you to send a PDU:
     override fun onMeshPduCreated(pdu: ByteArray) {
         meshProxyManager?.writeMeshPdu(pdu)
+    }
+
+    private fun onNodeProvisioned(meshNode: ProvisionedMeshNode) {
+        provisionedNodes.add(meshNode)
+        // Optionally update UI or logs
+    }
+
+    // <-- Place the function here:
+    private fun <T> runUserActionWithFeedback(
+        startMessage: String,
+        successMessage: String,
+        failureMessage: String,
+        block: () -> T
+    ) {
+        Toast.makeText(this, startMessage, Toast.LENGTH_SHORT).show()
+        try {
+            val result = block()
+            Toast.makeText(this, successMessage, Toast.LENGTH_SHORT).show()
+            result
+        } catch (ex: Exception) {
+            Log.e(TAG, "$failureMessage: ${ex.message}", ex)
+            Toast.makeText(this, "$failureMessage\n${ex.message}", Toast.LENGTH_LONG).show()
+        }
     }
 
     override fun sendProvisioningPdu(meshNode: UnprovisionedMeshNode, pdu: ByteArray) {
@@ -721,24 +853,129 @@ class AttendanceActivity : AppCompatActivity(),
         // Log or handle decryption failure here, optional for most apps
         Log.e("Mesh", "Message decryption failed at layer $meshLayer: $errorMessage")
     }
+    private fun sendAttendanceMeshMessage() {
+        // Example: send attendance using a GenericOnOffSet message (or your real model)
+        val roll = savedBleCode?.let { codeToRollMap[it] }
+        if (roll == null) {
+            Toast.makeText(this, "No roll number available for mesh message.", Toast.LENGTH_SHORT).show()
+            return
+        }
 
-    override fun onMeshMessageReceived(src: Int, meshMessage: no.nordicsemi.android.mesh.transport.MeshMessage) {
+        // (You must define appKeyIndex and destination address—can be teacher's UNICAST or a group)
+        val destination = 0x0001 // Change as appropriate for your mesh setup (e.g., teacher's node address)
+        val appKeyIndex = 0      // Most demo meshes use app key at index 0
+
+        val meshNetwork = meshManagerApi.meshNetwork
+        val appKey = meshNetwork?.appKeys?.getOrNull(appKeyIndex) ?: return
+
+        // Use mesh library's GenericOnOffSet (replace with your own vendor model if desired)
+        val tid = (System.currentTimeMillis() % 255).toInt()
+        val message = no.nordicsemi.android.mesh.transport.GenericOnOffSet(appKey, true, tid)
+
+        meshManagerApi.createMeshPdu(destination, message)
+
+        Log.d("AttendanceMesh", "Sent attendance mesh message (roll: $roll, dest: $destination)")
+    }
+
+    private fun trySendAttendanceMeshMessage() {
+        runUserActionWithFeedback(
+            startMessage = "Sending attendance...",
+            successMessage = "Attendance sent!",
+            failureMessage = "Failed to send attendance"
+        ) {
+            sendAttendanceMeshMessage()
+        }
+    }
+
+    private fun startProvisioningUnprovisionedStudent(entry: UnprovNodeWithAddress) {
+        runUserActionWithFeedback(
+            startMessage = "Provisioning started...",
+            successMessage = "Provisioning successful!",
+            failureMessage = "Provisioning failed"
+        ) {
+            meshProxyManager = MeshProxyBleManager(
+                context = this,
+                meshManagerApi = meshManagerApi,
+                deviceAddress = entry.mac, // Use the correct BLE MAC address here
+                onConnected = {
+                    runOnUiThread {
+                        Toast.makeText(this, "Connected to student for provisioning.", Toast.LENGTH_SHORT).show()
+                    }
+                    meshManagerApi.startProvisioning(entry.node) // Pass the UnprovisionedMeshNode here
+                },
+                onDisconnected = {
+                    runOnUiThread {
+                        Toast.makeText(this, "Provisioning device disconnected.", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                onError = { msg ->
+                    runOnUiThread {
+                        Toast.makeText(this, "Provisioning error: $msg", Toast.LENGTH_SHORT).show()
+                        // Optionally, re-enable UI here if you disable during provisioning
+                    }
+                }
+            )
+            meshProxyManager?.connect()
+        }
+    }
+
+
+
+
+    // Put this after startProvisioningUnprovisionedStudent in your AttendanceActivity class
+    private fun configureRelayForNode(provisionedNode: ProvisionedMeshNode) {
+        // Pseudo-code: meshManagerApi.setRelay(provisionedNode, true)
+        // The actual API may differ based on your mesh library version.
+
+        // Example using ConfigurationModelClient if available:
+        // You may need to create/use a config client and send a relay set message:
+        //
+        // val configClient = ... // create or obtain a ConfigurationClient instance
+        // val relayState = true  // enable relay
+        // val nodeAddress = provisionedNode.unicastAddress
+        // configClient.sendRelaySet(nodeAddress, relayState)
+        //
+        // Replace the above with your actual mesh library's configuration method.
+
+        // For demo/logging:
+        Log.d("MeshRelay", "Configured node at address ${provisionedNode.unicastAddress} as relay")
+    }
+
+
+    override fun onMeshMessageReceived(
+        src: Int,
+        meshMessage: no.nordicsemi.android.mesh.transport.MeshMessage
+    ) {
         Log.d("Mesh", "Mesh message received from: $src")
-        // Example: parse roll from message (or use src as identifier)
-        // Here, you might use meshMessage (if it's GenericOnOffSet or vendor) to extract roll/state info!
 
-        // For simple demo/prototype:
-        val roll = "ROLL_$src" // (You would map src to roll number using a central record or included state!)
+        // Handle GenericOnOffSet attendance messages with extra info
+        if (meshMessage is no.nordicsemi.android.mesh.transport.GenericOnOffSet) {
+            // Try to extract state/onOff and transaction id (tid) from the message
+            val detail = meshMessage.toString() // fallback
+            val roll = "ROLL_$src ($detail)"
 
-        runOnUiThread {
-            if (presentRolls.add(roll)) {
-                adapter.clear()
-                adapter.addAll(presentRolls.sorted())
-                adapter.notifyDataSetChanged()
-                updateRollCount()
+            runOnUiThread {
+                if (presentRolls.add(roll)) {
+                    adapter.clear()
+                    adapter.addAll(presentRolls.sorted())
+                    adapter.notifyDataSetChanged()
+                    updateRollCount()
+                }
+            }
+        } else {
+            // If another mesh message type, fallback to legacy logic
+            val roll = "ROLL_$src"
+            runOnUiThread {
+                if (presentRolls.add(roll)) {
+                    adapter.clear()
+                    adapter.addAll(presentRolls.sorted())
+                    adapter.notifyDataSetChanged()
+                    updateRollCount()
+                }
             }
         }
     }
+
 
 
 }

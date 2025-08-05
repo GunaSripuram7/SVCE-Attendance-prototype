@@ -6,6 +6,10 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import java.util.*
+import android.content.pm.PackageManager
+import android.Manifest
+import androidx.core.app.ActivityCompat
+
 
 /**
  * Minimal BLE Mesh Proxy GATT client.
@@ -43,36 +47,62 @@ class MeshProxyBleManager(
 
     fun connect() {
         val bluetoothAdapter = (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
-        val device = bluetoothAdapter.getRemoteDevice(deviceAddress)
-        bluetoothGatt = device.connectGatt(context, false, gattCallback)
-        Log.d(TAG, "Connecting to Mesh Proxy node at $deviceAddress")
-        // Optionally request larger MTU (requires API 21+)
-        // bluetoothGatt?.requestMtu(mtuSize)
+        if (ActivityCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            onError("Missing BLUETOOTH_CONNECT permission")
+            return
+        }
+        try {
+            val device = bluetoothAdapter.getRemoteDevice(deviceAddress)
+            bluetoothGatt = device.connectGatt(context, false, gattCallback)
+            Log.d(TAG, "Connecting to Mesh Proxy node at $deviceAddress")
+        } catch (e: SecurityException) {
+            onError("Bluetooth permission error: ${e.message}")
+        }
     }
+
 
     fun disconnect() {
         isConnected = false
+        if (ActivityCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            onError("Missing BLUETOOTH_CONNECT permission")
+            return
+        }
         bluetoothGatt?.disconnect()
         bluetoothGatt?.close()
         bluetoothGatt = null
         Log.d(TAG, "Disconnected from Mesh Proxy node")
     }
 
+
     /** Writes a mesh PDU to the Proxy Data In characteristic and waits for ACK. */
     fun writeMeshPdu(pdu: ByteArray) {
-        proxyDataIn?.let { char ->
-            char.value = pdu
-            val ok = bluetoothGatt?.writeCharacteristic(char) ?: false
-            Log.d(TAG, "Writing mesh PDU to Data In char, ok=$ok (bytes=${pdu.size})")
-            if (!ok) onError("Failed to write PDU")
-        } ?: onError("Proxy Data In characteristic not discovered")
+        if (ActivityCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            onError("Missing BLUETOOTH_CONNECT permission")
+            return
+        }
+        try {
+            proxyDataIn?.let { char ->
+                char.value = pdu
+                val ok = bluetoothGatt?.writeCharacteristic(char) ?: false
+                Log.d(TAG, "Writing mesh PDU to Data In char, ok=$ok (bytes=${pdu.size})")
+                if (!ok) onError("Failed to write PDU")
+            } ?: onError("Proxy Data In characteristic not discovered")
+        } catch (e: SecurityException) {
+            onError("Bluetooth permission error: ${e.message}")
+        }
     }
+
+
 
     private val gattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             Log.d(TAG, "onConnectionStateChange: status=$status, state=$newState")
             if (status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothProfile.STATE_CONNECTED) {
                 isConnected = true
+                if (ActivityCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                    onError("Missing BLUETOOTH_CONNECT permission for service discovery")
+                    return
+                }
                 gatt.discoverServices()
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 isConnected = false
@@ -80,23 +110,29 @@ class MeshProxyBleManager(
             }
         }
 
+
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             Log.d(TAG, "onServicesDiscovered: $status")
             if (status == BluetoothGatt.GATT_SUCCESS) {
-                // Try to get Proxy service/characteristics
                 val proxyService = gatt.getService(PROXY_SERVICE_UUID) ?: gatt.getService(PROVISIONING_SERVICE_UUID)
-                proxyDataIn = proxyService?.getCharacteristic(DATA_IN_CHAR_UUID)
-                    ?: proxyService?.getCharacteristic(PROV_DATA_IN_CHAR_UUID)
-                proxyDataOut = proxyService?.getCharacteristic(DATA_OUT_CHAR_UUID)
-                    ?: proxyService?.getCharacteristic(PROV_DATA_OUT_CHAR_UUID)
-                // Enable notifications on Data Out
+                proxyDataIn = proxyService?.getCharacteristic(DATA_IN_CHAR_UUID) ?: proxyService?.getCharacteristic(PROV_DATA_IN_CHAR_UUID)
+                proxyDataOut = proxyService?.getCharacteristic(DATA_OUT_CHAR_UUID) ?: proxyService?.getCharacteristic(PROV_DATA_OUT_CHAR_UUID)
+
+                if (ActivityCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                    onError("Missing BLUETOOTH_CONNECT permission for notifications")
+                    return
+                }
                 proxyDataOut?.let { outChar ->
-                    gatt.setCharacteristicNotification(outChar, true)
-                    // Set descriptor
-                    val cccd = outChar.getDescriptor(UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"))
-                    cccd?.let {
-                        it.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                        gatt.writeDescriptor(it)
+                    try {
+                        gatt.setCharacteristicNotification(outChar, true)
+                        val cccd = outChar.getDescriptor(UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"))
+                        cccd?.let {
+                            it.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                            gatt.writeDescriptor(it)
+                        }
+                    } catch (e: SecurityException) {
+                        onError("Bluetooth permission error: ${e.message}")
+                        return
                     }
                 }
                 handler.post { onConnected() }
@@ -105,6 +141,8 @@ class MeshProxyBleManager(
                 onError("Service discovery failed: $status")
             }
         }
+
+
 
         override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
             if ((characteristic.uuid == DATA_OUT_CHAR_UUID) || (characteristic.uuid == PROV_DATA_OUT_CHAR_UUID)) {
