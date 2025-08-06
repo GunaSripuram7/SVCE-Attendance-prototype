@@ -44,11 +44,23 @@ import java.io.FileWriter
 import java.text.SimpleDateFormat
 import java.util.*
 
+import android.os.Build
+
+
 import java.io.BufferedReader
 import java.io.FileReader
 
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
+
+import android.widget.Toast
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
+import android.provider.Settings
+import android.content.Intent
+
+
+
 
 data class UnprovNodeWithAddress(
     val node: UnprovisionedMeshNode,
@@ -60,9 +72,14 @@ class AttendanceActivity : AppCompatActivity(),
     no.nordicsemi.android.mesh.MeshProvisioningStatusCallbacks,
     no.nordicsemi.android.mesh.MeshStatusCallbacks {
 
+    companion object {
+        private const val REQUEST_SCAN = 1  // Arbitrary code to identify the permission request
+    }
+
     private val discoveredDevices = mutableListOf<ScanResult>()
     private var meshScanCallback: ScanCallback? = null
 
+    private lateinit var scanPermissionLauncher: ActivityResultLauncher<String>
 
     private val serviceUuid = UUID.fromString("0000fd00-0000-1000-8000-00805f9b34fb")
   //  private var scannerHelper: BleScannerHelper? = null
@@ -149,6 +166,29 @@ class AttendanceActivity : AppCompatActivity(),
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_attendance)
+
+        scanPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
+            Log.d("Attendance", "Result of permission launcher: $isGranted")
+            if (isGranted) {
+                scanForMeshProxyDevices()
+            } else {
+                val shouldShow = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    ActivityCompat.shouldShowRequestPermissionRationale(this, Manifest.permission.BLUETOOTH_SCAN)
+                } else true  // Fallback for older Android
+                Log.d("Attendance", "shouldShowRequestPermissionRationale: $shouldShow")
+                Toast.makeText(this, "Bluetooth scan permission isDenied=${!isGranted}, rationale=$shouldShow", Toast.LENGTH_LONG).show()
+                if (!shouldShow) {
+                    Toast.makeText(this, "Please manually enable Nearby Devices in app settings and ensure Location is ON.", Toast.LENGTH_LONG).show()
+                    // Comment out redirection for testing:
+                    // val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                    // intent.data = android.net.Uri.fromParts("package", packageName, null)
+                    // startActivity(intent)
+                }
+            }
+        }
+
+
+
         Log.d(TAG, "AttendanceActivity started with role: ${intent.getStringExtra("role")}")
         meshManagerApi = no.nordicsemi.android.mesh.MeshManagerApi(this)
         meshManagerApi.setMeshManagerCallbacks(this)
@@ -242,6 +282,7 @@ class AttendanceActivity : AppCompatActivity(),
         }
 
         btnStart.setOnClickListener {
+            Log.d("Attendance", "Permission check: ${ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED}")
             if (!checkPermissions()) return@setOnClickListener
             Log.d(TAG, "\"Start Attendance\" clicked. Role: $role")
 
@@ -399,6 +440,21 @@ class AttendanceActivity : AppCompatActivity(),
             }
         })
     }
+
+    override fun onStart() {
+        super.onStart()
+
+        Log.d("Attendance", "Permission check: ${ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED}")
+
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
+            scanPermissionLauncher.launch(Manifest.permission.BLUETOOTH_SCAN)
+        } else {
+            scanForMeshProxyDevices()
+        }
+    }
+
+
 
 
     private fun scanForMeshProxyDevices() {
@@ -807,7 +863,7 @@ class AttendanceActivity : AppCompatActivity(),
         meshNode: UnprovisionedMeshNode,
         state: ProvisioningState.States,
         data: ByteArray?
-    ) {}
+    ) {Log.d(TAG, "Provisioning state: $state for node deviceUuid=${meshNode.deviceUuid}")}
 
     override fun onProvisioningFailed(
         meshNode: UnprovisionedMeshNode,
@@ -1002,6 +1058,10 @@ class AttendanceActivity : AppCompatActivity(),
             }
         }
     }
+
+
+
+
 
 
 

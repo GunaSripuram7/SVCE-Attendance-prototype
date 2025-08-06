@@ -3,21 +3,20 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET"/>
-    <!-- Always declare legacy Bluetooth permissions for backward compatibility -->
+    <!-- Legacy Bluetooth permissions for backward compatibility -->
     <uses-permission android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
 
-    <!-- Android 12+ “Nearby devices” runtime permissions -->
+    <!-- Android 12+ "Nearby devices" runtime permissions -->
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
-        android:usesPermissionFlags="neverForLocation"
-        tools:targetApi="s" />
+        tools:targetApi="s"
+        android:maxSdkVersion="31"
+        android:usesPermissionFlags="neverForLocation" />
+
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
 
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-
-    <!-- Location only needed for pre-Android 12 BLE scanning -->
+    <!-- Location permissions only needed for pre-Android 12 BLE scanning -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
         android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"
@@ -49,15 +48,15 @@
         <activity android:name=".activities.LoginActivity"
             android:exported="false" />
         <activity android:name=".activities.SignupActivity"
-            android:exported="false"/>
+            android:exported="false" />
         <activity android:name=".activities.HomeActivity"
-            android:exported="false"/>
+            android:exported="false" />
         <activity android:name=".activities.AttendanceActivity"
-            android:exported="false"/>
+            android:exported="false" />
         <activity android:name=".activities.SessionDetailActivity"
-            android:exported="false"/>
+            android:exported="false" />
         <activity android:name=".activities.PresentStudentsActivity"
-            android:exported="false"/>
+            android:exported="false" />
 
     </application>
 
