@@ -48,6 +48,18 @@
         android:textSize="18sp"
         android:layout_marginTop="16dp" />
 
+    <!-- NEW: Scanning Status / Broadcast Countdown -->
+    <TextView
+        android:id="@+id/tvBroadcastCountdown"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Not broadcasting"
+        android:textSize="14sp"
+        android:textColor="@color/teal_700"
+        android:background="@color/teal_50"
+        android:padding="8dp"
+        android:layout_marginTop="12dp" />
+
     <!-- Start/Stop Attendance -->
     <Button
         android:id="@+id/btnStart"
@@ -65,13 +77,27 @@
         android:enabled="false"
         android:layout_marginTop="8dp" />
 
-    <!-- Status / Broadcast Countdown -->
+    <!-- NEW: Helper List for Teacher -->
     <TextView
-        android:id="@+id/tvBroadcastCountdown"
-        android:layout_width="wrap_content"
+        android:id="@+id/tvHelperList"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Not broadcasting"
-        android:layout_marginTop="16dp" />
+        android:text="Selected helpers: 0"
+        android:textSize="14sp"
+        android:layout_marginTop="16dp"
+        android:background="@color/purple_50"
+        android:padding="8dp"
+        android:visibility="gone" />
+
+    <!-- NEW: Start Group Scanning (Teacher only) -->
+    <Button
+        android:id="@+id/btnStartGroupScanning"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Start Group Scanning"
+        android:layout_marginTop="8dp"
+        android:visibility="gone"
+        android:enabled="false" />
 
     <!-- Roster List (for teacher) -->
     <ListView

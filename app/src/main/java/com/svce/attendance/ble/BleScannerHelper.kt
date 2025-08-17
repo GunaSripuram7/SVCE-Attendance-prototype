@@ -72,4 +72,6 @@ class BleScannerHelper(
         Log.d("BleScannerHelper", "Stopping BLE scan")
         scanner.stopScan(scanCallback)
     }
+
+
 }

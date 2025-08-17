@@ -8,9 +8,7 @@
     android:paddingRight="32dp"
     android:paddingBottom="32dp"
     android:paddingTop="?attr/actionBarSize"
-    android:fitsSystemWindows="true"
-
-    >
+    android:fitsSystemWindows="true">
 
     <!-- Profile Image at Top-Left -->
     <ImageView
@@ -25,6 +23,17 @@
         app:layout_constraintTop_toTopOf="parent"
         android:scaleType="centerCrop" />
 
+    <!-- Logout Button at Top-Right -->
+    <Button
+        android:id="@+id/btnLogout"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/logout"
+        android:visibility="gone"
+        android:layout_margin="16dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
     <!-- Home Role Info under profile photo -->
     <TextView
         android:id="@+id/tvHomeRole"
@@ -37,14 +46,45 @@
         app:layout_constraintTop_toBottomOf="@id/ivProfile"
         app:layout_constraintStart_toStartOf="parent" />
 
+    <!-- Scanning Status Banner (for student) -->
+    <TextView
+        android:id="@+id/tvScanningStatus"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="@string/status_no_scanning"
+        android:textSize="14sp"
+        android:textColor="@color/teal_700"
+        android:background="@color/teal_50"
+        android:padding="8dp"
+        android:layout_marginTop="12dp"
+        android:gravity="center"
+        app:layout_constraintTop_toBottomOf="@id/tvHomeRole"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        />
+
+    <Button
+        android:id="@+id/btnHelperScan"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="Helper Scan (5:00)"
+        android:textColor="@android:color/white"
+        android:backgroundTint="@color/purple_500"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/tvScanningStatus"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+
     <!-- Attendance Button centered below -->
     <Button
         android:id="@+id/btnAttendance"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:text="@string/take_attendance"
-        android:layout_marginTop="32dp"
-        app:layout_constraintTop_toBottomOf="@id/tvHomeRole"
+        android:layout_marginTop="20dp"
+        app:layout_constraintTop_toBottomOf="@id/btnHelperScan"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
@@ -59,13 +99,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 
-    <Button
-        android:id="@+id/btnLogout"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/logout"
-        android:visibility="gone"
-        android:layout_alignParentTop="true"
-        android:layout_alignParentEnd="true"
-        android:layout_margin="16dp" />
+
+
+
 </androidx.constraintlayout.widget.ConstraintLayout>
