@@ -11,6 +11,18 @@ import android.Manifest
 import android.os.CountDownTimer
 import android.os.Handler
 
+import com.svce.attendance.models.AttendanceSession
+
+import io.github.jan.supabase.postgrest.from
+
+import io.github.jan.supabase.createSupabaseClient
+import io.github.jan.supabase.postgrest.Postgrest
+import io.github.jan.supabase.auth.Auth
+import io.github.jan.supabase.storage.Storage
+import io.github.jan.supabase.realtime.Realtime
+import io.github.jan.supabase.functions.Functions
+
+
 
 import android.os.Looper
 import android.content.Context
@@ -37,6 +49,8 @@ import java.io.FileReader
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import kotlin.text.toIntOrNull
+
+import kotlinx.coroutines.Dispatchers
 
 
 // NEW: Advanced multi-scanner imports (add these when service classes are created)
@@ -73,6 +87,8 @@ class AttendanceActivity : AppCompatActivity() {
     private lateinit var tvStatus: TextView // TODO: Add to layout
     private lateinit var tvHelperList: TextView // TODO: Add to layout for teacher
     private lateinit var btnStartGroupScanning: Button // TODO: Add to layout for teacher
+
+    private lateinit var btnStopGroupScanning: Button
 
     // App state (PRESERVED + NEW)
     private var isInGracePeriod = false
@@ -207,6 +223,70 @@ class AttendanceActivity : AppCompatActivity() {
         // TODO: Initialize services when ready
         // initializeServices()
         // connectToSocket()
+
+        // Add this inside onCreate (replace "your_table_name" with a real table!)
+// No need to create a new CoroutineScope: use lifecycleScope in Activity.
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val result = com.svce.attendance.services.SupabaseConfig.client
+                    .from("attendance_sessions")
+                    .select()
+                    .decodeList<AttendanceSession>()  // Use your data class here!
+
+                android.util.Log.d("SupabaseTest", "Sessions: $result")
+            } catch (e: Exception) {
+                android.util.Log.e("SupabaseTest", "Error fetching sessions", e)
+            }
+        }
+
+        // Only for TESTING: Insert a new session on Activity start -- using real user UUID!
+        if (role == "teacher") {
+            // Get the teacher's UUID from SharedPreferences
+            val sharedPref = getSharedPreferences("user_prefs", MODE_PRIVATE)
+            val teacherUUID = sharedPref.getString("user_id", null)
+
+            if (teacherUUID != null) {
+                val session = AttendanceSession(
+                    session_code = "TEST${System.currentTimeMillis()}",
+                    teacher_id = teacherUUID, // ✅ Use real UUID here!
+                    class_id = "CS101"
+                )
+                lifecycleScope.launch(Dispatchers.IO) {
+                    try {
+                        val insertedSession = com.svce.attendance.services.SupabaseConfig.client
+                            .from("attendance_sessions")
+                            .insert(session)
+                            .decodeSingle<AttendanceSession>()
+                        Log.d("SupabaseTest", "Inserted session: $insertedSession")
+                    } catch (e: Exception) {
+                        Log.e("SupabaseTest", "Insert failed", e)
+                    }
+                }
+            } else {
+                Log.e("SupabaseTest", "Teacher UUID not found in SharedPreferences!")
+            }
+        }
+
+
+        // Only for TESTING: Insert a new session on Activity start
+        /*val session = AttendanceSession(
+            session_code = "TEST001",
+            teacher_id = "teacher1@example.com",
+            class_id = "CS101"
+        )
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val insertedSession = com.svce.attendance.services.SupabaseConfig.client
+                    .from("attendance_sessions")
+                    .insert(session)
+                    .decodeSingle<AttendanceSession>()
+                android.util.Log.d("SupabaseTest", "Inserted: $insertedSession")
+            } catch (e: Exception) {
+                android.util.Log.e("SupabaseTest", "Insert failed", e)
+            }
+        } */
+
     }
 
     private fun initializeViews() {
@@ -225,6 +305,7 @@ class AttendanceActivity : AppCompatActivity() {
         // btnStartGroupScanning = findViewById(R.id.btnStartGroupScanning)
         // --- ADD THIS for the Helper Scan button ---
         btnStartGroupScanning = findViewById(R.id.btnStartGroupScanning)
+        btnStopGroupScanning = findViewById(R.id.btnStopGroupScanning) // <--- ADD THIS LINE HERE
 
         adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, ArrayList())
         listView.adapter = adapter
@@ -318,6 +399,12 @@ class AttendanceActivity : AppCompatActivity() {
         btnStart.visibility = View.VISIBLE
         btnStop.visibility = View.VISIBLE
 
+
+        btnStartGroupScanning.visibility = View.GONE // (optional, if not needed in this mode)
+
+        btnStopGroupScanning.visibility = View.VISIBLE      // <-- add here
+        btnStopGroupScanning.isEnabled = true
+
         // Start scanning immediately
         startHelperBleScanning()
     }
@@ -348,10 +435,17 @@ class AttendanceActivity : AppCompatActivity() {
             }
         }
 
-        // NEW: Group scanning button (TODO: Implement when UI is ready)
-        // btnStartGroupScanning.setOnClickListener {
-        //     startGroupScanning()
-        // }
+        // Helper Group scanning button
+        btnStartGroupScanning.setOnClickListener {
+            Log.d("HelperScan", "Start Group Scanning button clicked!")
+            if (!checkPermissions()) return@setOnClickListener
+            startHelperBleScanning()
+        }
+
+        btnStopGroupScanning.setOnClickListener {
+            stopHelperBleScanningAndSendRolls()
+        }
+
 
         // NEW: List item clicks for helper selection (TODO: Implement when advanced mode is ready)
         // Enable list item click only in teacher mode
@@ -905,6 +999,8 @@ class AttendanceActivity : AppCompatActivity() {
 
 
     private fun startHelperBleScanning() {
+        Log.d("HelperScan", "startHelperBleScanning invoked")
+
         scannedStudents.clear()
         adapter.clear()
         scannerHelper = BleScannerHelper(
@@ -912,6 +1008,7 @@ class AttendanceActivity : AppCompatActivity() {
             serviceUuid = serviceUuid,
             onDeviceFound = { code: Int ->
                 val roll = codeToRoll[code]
+                Log.d("HelperScan", "onDeviceFound code=$code → roll=$roll") // <--- ADD THIS LINE
                 if (roll != null && !scannedStudents.contains(roll)) {
                     scannedStudents.add(roll)
                     runOnUiThread {
@@ -930,6 +1027,24 @@ class AttendanceActivity : AppCompatActivity() {
         )
         scannerHelper?.startScanning()
         startCleanup()
+    }
+
+    private fun stopHelperBleScanningAndSendRolls() {
+        scannerHelper?.stopScanning()
+        btnStopGroupScanning.visibility = View.GONE
+        btnStartGroupScanning.isEnabled = true // Allow restart if needed (optional)
+
+        val rollList = scannedStudents.toList()
+        val sessionBlockName = "TEST_ROOM_101" // TEMPORARY, replace later!
+        sendHelperRollsToSupabase(sessionBlockName, rollList)
+    }
+
+    private fun sendHelperRollsToSupabase(sessionBlockName: String, rolls: List<String>) {
+        // Use your Supabase SDK, REST, or HTTP client
+        Log.d("SupabaseUpload", "Sending rolls: $rolls to block: $sessionBlockName")
+        // TODO: Implement actual upload to Supabase!
+        // E.g. supabaseService.uploadSessionBlock(sessionBlockName, rolls)
+        Toast.makeText(this, "Sent ${rolls.size} rolls to Supabase (block=$sessionBlockName)", Toast.LENGTH_LONG).show()
     }
 
 

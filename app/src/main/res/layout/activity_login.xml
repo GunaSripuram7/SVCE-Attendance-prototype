@@ -29,17 +29,33 @@
         />
 
     <!-- Password Input -->
-    <EditText
-        android:id="@+id/etPassword"
+    <!-- Password Input with show/hide toggle -->
+    <RelativeLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="@string/password"
-        android:autofillHints="password"
-        android:inputType="textPassword"
-        android:layout_marginTop="16dp"
-        android:minHeight="48dp"
+        android:layout_marginTop="16dp">
 
-        />
+        <EditText
+            android:id="@+id/etPassword"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/password"
+            android:autofillHints="password"
+            android:inputType="textPassword"
+            android:minHeight="48dp"
+            android:paddingEnd="48dp"/>
+
+        <ImageButton
+            android:id="@+id/btnTogglePassword"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_alignParentEnd="true"
+            android:layout_centerVertical="true"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_visibility_off"
+            android:contentDescription="Toggle password"/>
+    </RelativeLayout>
+
 
     <!-- Roll Number (Student Only, set to GONE in code for teacher) -->
     <EditText

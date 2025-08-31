@@ -1,8 +1,11 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
-    kotlin("plugin.serialization") version "1.9.0" // or your Kotlin version
+    alias(libs.plugins.kotlin.serialization)
+
 }
+
+
 
 android {
     namespace = "com.svce.attendance"
@@ -39,15 +42,28 @@ android {
 
 dependencies {
     // OneSignal for push notifications
+//    ) // Make sure this version matches plugin version
+    // or latest stable
+
+    implementation(platform("io.github.jan-tennert.supabase:bom:3.2.2"))
+    implementation("io.github.jan-tennert.supabase:postgrest-kt")
+    implementation("io.github.jan-tennert.supabase:realtime-kt")
+
+    implementation("io.github.jan-tennert.supabase:storage-kt")
+
+    // Add the BOM once to keep all modules on 3.2.2 automatically
 
 
+    implementation("io.ktor:ktor-client-android:3.2.2")
+
+// or the latest release!
     implementation("com.onesignal:OneSignal:5.1.6")
 
     // Supabase dependencies
-    implementation("io.github.jan-tennert.supabase:postgrest-kt:2.4.1")
-    implementation("io.github.jan-tennert.supabase:realtime-kt:2.4.1")
-    implementation("io.ktor:ktor-client-android:2.3.4")
-    implementation("io.ktor:ktor-client-core:2.3.4")
+
+
+    implementation("io.github.jan-tennert.supabase:functions-kt")
+
 
     // Socket.IO for real-time coordination
     implementation("io.socket:socket.io-client:2.0.1")
@@ -58,20 +74,20 @@ dependencies {
     implementation("com.google.code.gson:gson:2.13.1")
 
     // Coroutines for async operations
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+   // implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0")
 
 
     // Add the BOM for version management
-    implementation(platform("io.github.jan-tennert.supabase:bom:3.0.1"))
+
 
 // Add the specific modules you need
-    implementation("io.github.jan-tennert.supabase:postgrest-kt")
-    implementation("io.github.jan-tennert.supabase:auth-kt") // if you need auth
-    implementation("io.github.jan-tennert.supabase:storage-kt") // if you need storage
+
+     // if you need auth
+
 
 // Add Ktor client for networking
-    implementation("io.ktor:ktor-client-android:3.0.0")
+
 
 
     // Standard Android dependencies

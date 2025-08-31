@@ -25,15 +25,10 @@ import java.io.FileReader
 import androidx.core.content.edit
 import android.os.CountDownTimer
 
-
-
-
-
-
-
-
-
-
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+import com.svce.attendance.services.SupabaseConfig
+import io.github.jan.supabase.auth.auth
 
 
 class HomeActivity : AppCompatActivity() {
@@ -127,17 +122,31 @@ class HomeActivity : AppCompatActivity() {
             }
 
             findViewById<Button>(R.id.btnLogout).setOnClickListener {
-                val sharedPref = getSharedPreferences("teacher_prefs", MODE_PRIVATE)
-                sharedPref.edit {
-                    clear()
+                // Sign out from Supabase
+                lifecycleScope.launch {
+                    try {
+                        SupabaseConfig.client.auth.signOut()
+                        Log.d("HomeActivity", "User signed out from Supabase")
+                    } catch (e: Exception) {
+                        Log.e("HomeActivity", "Error signing out", e)
+                    }
                 }
-                val logoutIntent = Intent(this, LoginActivity::class.java).apply {
+
+                // Clear SharedPreferences (use the updated pref name)
+                val sharedPref = getSharedPreferences("user_prefs", MODE_PRIVATE)
+                sharedPref.edit().clear().apply()
+
+                // Navigate to role selection
+                val logoutIntent = Intent(this, RoleSelectionActivity::class.java).apply {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                 }
+
                 startActivity(logoutIntent)
                 finishAffinity()
                 Toast.makeText(this, "Logged out successfully", Toast.LENGTH_SHORT).show()
             }
+
+
         } else {
             recycler.visibility = View.GONE
         }

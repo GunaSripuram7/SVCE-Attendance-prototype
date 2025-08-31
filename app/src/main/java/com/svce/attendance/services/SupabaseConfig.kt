@@ -3,6 +3,10 @@ package com.svce.attendance.services
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.realtime.Realtime
+import io.github.jan.supabase.auth.Auth
+import io.github.jan.supabase.storage.Storage
+import io.github.jan.supabase.functions.Functions
+
 
 object SupabaseConfig {
     // Use your actual Supabase project credentials below
@@ -15,6 +19,8 @@ object SupabaseConfig {
     ) {
         install(Postgrest)
         install(Realtime)
-        // You can install more modules here
+        install(Auth)
+        install(Storage)
+        install(Functions)
     }
 }

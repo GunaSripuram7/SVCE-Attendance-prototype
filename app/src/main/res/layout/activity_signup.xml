@@ -27,15 +27,64 @@
         android:autofillHints="emailAddress" />
 
     <!-- Password Input -->
-    <EditText
-        android:id="@+id/etSignupPassword"
+    <!-- Password Input with toggle -->
+    <RelativeLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="@string/password"
-        android:inputType="textPassword"
-        android:minHeight="48dp"
-        android:autofillHints="password"
-        android:layout_marginTop="16dp" />
+        android:layout_marginTop="16dp">
+
+        <EditText
+            android:id="@+id/etSignupPassword"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/password"
+            android:inputType="textPassword"
+            android:minHeight="48dp"
+            android:autofillHints="password"
+            android:paddingEnd="48dp"/>
+
+        <ImageButton
+            android:id="@+id/btnToggleSignupPassword"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_alignParentEnd="true"
+            android:layout_centerVertical="true"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_visibility_off"
+            android:contentDescription="Toggle password"/>
+    </RelativeLayout>
+
+
+    <!-- Confirm Password Input -->
+    <!-- Confirm Password with toggle -->
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp">
+
+        <EditText
+            android:id="@+id/etSignupConfirmPassword"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Confirm Password"
+            android:inputType="textPassword"
+            android:minHeight="48dp"
+            android:autofillHints="password"
+            android:paddingEnd="48dp"/>
+
+        <ImageButton
+            android:id="@+id/btnToggleConfirmPassword"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_alignParentEnd="true"
+            android:layout_centerVertical="true"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_visibility_off"
+            android:contentDescription="Toggle confirm password"/>
+    </RelativeLayout>
+
+
+
 
     <!-- Roll Number Input (student only, shown by code) -->
     <EditText
