@@ -2,6 +2,7 @@ plugins {
 
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
+    id("com.google.gms.google-services")
 
 
 }
@@ -40,6 +41,18 @@ android {
 
 
 dependencies {
+    // Firebase BOM - manages all Firebase library versions
+    implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
+
+    // Firebase Authentication
+    implementation("com.google.firebase:firebase-auth-ktx")
+
+    // Firebase Firestore Database (recommended for structured data)
+    implementation("com.google.firebase:firebase-firestore-ktx")
+
+    // Optional: Firebase Realtime Database (if you prefer real-time updates)
+    // implementation("com.google.firebase:firebase-database-ktx")
+
     implementation("com.onesignal:OneSignal:[5.1.6, 5.1.99]")
     implementation("com.squareup.okhttp3:okhttp:4.11.0")
     implementation("com.squareup.moshi:moshi-kotlin:1.15.0")

@@ -15,6 +15,10 @@ import com.opencsv.CSVReader
 import com.svce.attendance.R
 import java.io.File
 import java.io.FileReader
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.ktx.auth
+import com.google.firebase.ktx.Firebase
+
 
 class HomeActivity : AppCompatActivity() {
 
@@ -28,9 +32,16 @@ class HomeActivity : AppCompatActivity() {
     private var assignedRolls: List<String> = emptyList()
     private var attendanceMatrix: List<Array<String>> = emptyList()
 
+    private lateinit var auth: FirebaseAuth
+
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_home)
+
+        // Initialize Firebase Auth
+        auth = Firebase.auth
+
 
         val role = intent.getStringExtra("role") ?: "Unknown"
         mentorEmail = intent.getStringExtra("email") ?: ""  // May be empty for test teachers
@@ -71,19 +82,13 @@ class HomeActivity : AppCompatActivity() {
             }
 
             findViewById<Button>(R.id.btnLogout).setOnClickListener {
-                val sharedPref = getSharedPreferences("teacher_prefs", MODE_PRIVATE)
-                with(sharedPref.edit()) {
-                    clear()
-                    apply()
-                }
-
-                val logoutIntent = Intent(this, LoginActivity::class.java).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                }
-                startActivity(logoutIntent)
+                auth.signOut()
+                getSharedPreferences("teacher_prefs", MODE_PRIVATE).edit().clear().apply()
+                startActivity(Intent(this, LoginActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK))
                 finishAffinity()
-                Toast.makeText(this, "Logged out successfully", Toast.LENGTH_SHORT).show()
             }
+
         } else {
             recycler.visibility = View.GONE
         }
