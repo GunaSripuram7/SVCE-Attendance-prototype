@@ -11,33 +11,7 @@
     android:fitsSystemWindows="true">
 
     <!-- BLE Code Entry Container -->
-    <LinearLayout
-        android:id="@+id/bleCodeContainer"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Enter your BLE code:"
-            android:textSize="16sp" />
-
-        <EditText
-            android:id="@+id/etBleCode"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:inputType="number"
-            android:hint="e.g. 1234"
-            android:layout_marginTop="4dp" />
-
-        <Button
-            android:id="@+id/btnSaveCode"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Save Code"
-            android:layout_marginTop="8dp" />
-    </LinearLayout>
 
     <!-- Role Display -->
     <TextView

@@ -51,8 +51,15 @@ class HomeActivity : AppCompatActivity() {
         ivProfile = findViewById(R.id.ivProfile)
         btnAttendance = findViewById(R.id.btnAttendance)
         recycler = findViewById(R.id.sessionList)
+        val btnLogout = findViewById<Button>(R.id.btnLogout)
 
-        tvHomeRole.text = getString(R.string.home_as, role)
+
+        if (role == "student") {
+            val rollNumber = intent.getStringExtra("rollNumber") ?: "N/A"
+            tvHomeRole.text = "Student: $rollNumber"
+        } else {
+            tvHomeRole.text = getString(R.string.home_as, role)
+        }
         recycler.layoutManager = LinearLayoutManager(this)
 
         btnAttendance.text = if (role == "teacher") "Take Attendance" else "Give Attendance"
@@ -61,14 +68,44 @@ class HomeActivity : AppCompatActivity() {
                 putExtra("role", role)
                 if (role == "teacher" && mentorEmail.isNotEmpty()) {
                     putExtra("email", mentorEmail)
+                } else if (role == "student") {
+                    val rollNumber = intent.getStringExtra("rollNumber") ?: ""
+                    putExtra("rollNumber", rollNumber)
                 }
             }
             startActivity(intent)
         }
 
+
         ivProfile.setOnClickListener {
             Toast.makeText(this, "Profile: $mentorEmail", Toast.LENGTH_SHORT).show()
+            val role = intent.getStringExtra("role") ?: "Unknown"
+            if (role == "student") {
+                val rollNumber = intent.getStringExtra("rollNumber") ?: "N/A"
+                Toast.makeText(this, "Student: $rollNumber", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "Profile: $mentorEmail", Toast.LENGTH_SHORT).show()
+            }
         }
+
+        btnLogout.setOnClickListener {
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Logout")
+                .setMessage("Are you sure you want to logout?")
+                .setPositiveButton("Logout") { _, _ ->
+                    // Sign out
+                    auth.signOut()
+                    // Clear preferences
+                    getSharedPreferences("user_prefs", MODE_PRIVATE).edit().clear().apply()
+                    // Navigate back
+                    startActivity(Intent(this, RoleSelectionActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK))
+                    finishAffinity()
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+
 
         if (role == "teacher") {
             recycler.visibility = View.VISIBLE
@@ -83,7 +120,8 @@ class HomeActivity : AppCompatActivity() {
 
             findViewById<Button>(R.id.btnLogout).setOnClickListener {
                 auth.signOut()
-                getSharedPreferences("teacher_prefs", MODE_PRIVATE).edit().clear().apply()
+                getSharedPreferences("user_prefs", MODE_PRIVATE).edit().clear().apply()
+
                 startActivity(Intent(this, LoginActivity::class.java)
                     .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK))
                 finishAffinity()

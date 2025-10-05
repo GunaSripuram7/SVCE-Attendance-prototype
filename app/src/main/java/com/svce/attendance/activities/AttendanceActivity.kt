@@ -28,6 +28,10 @@ import java.io.File
 import java.io.FileWriter
 import java.text.SimpleDateFormat
 import java.util.*
+import com.svce.attendance.utils.CustomDeviceFingerprint
+import com.svce.attendance.ble.StudentPayload
+
+
 
 import java.io.BufferedReader
 import java.io.FileReader
@@ -41,13 +45,10 @@ class AttendanceActivity : AppCompatActivity() {
     private val serviceUuid = UUID.fromString("0000fd00-0000-1000-8000-00805f9b34fb")
     private var scannerHelper: BleScannerHelper? = null
     private var advertiserHelper: BleAdvertiserHelper? = null
-    private var hasSubmittedCodeThisSession = false
+
 
     private lateinit var tvRollCount: TextView
-    private lateinit var bleCodeContainer: LinearLayout
-    private lateinit var etBleCode: EditText
 
-    private lateinit var btnSaveCode: Button
     private lateinit var btnStart: Button
     private lateinit var btnStop: Button
     private lateinit var tvRole: TextView
@@ -59,6 +60,20 @@ class AttendanceActivity : AppCompatActivity() {
     private lateinit var codeToRollMap: Map<Int, String>
     // Set of currently present roll numbers
     private val presentRolls = mutableSetOf<String>()
+    // Add these new properties for proxy detection
+    data class ScannedStudent(
+        val payload: StudentPayload,
+        val rollNumber: String,
+        val timestamp: Long = System.currentTimeMillis(),
+        var isProxy: Boolean = false,
+        var proxyReason: String = ""
+    )
+
+    private val scannedStudents = mutableListOf<ScannedStudent>()
+    private val seenAndroidIds = mutableSetOf<Int>()
+    private val seenDeviceFingerprints = mutableSetOf<Int>()
+    private val rollHashToRollMap = mutableMapOf<Int, String>()
+
 
     // Map to track last seen time of each roll number (millis)
     private val lastSeenMap = mutableMapOf<String, Long>()
@@ -79,7 +94,7 @@ class AttendanceActivity : AppCompatActivity() {
 
     private lateinit var codeToRoll: Map<Int, String>
 
-    private var savedBleCode: Int? = null
+
     private lateinit var role: String
 
     private val cleanupRunnable = object : Runnable {
@@ -118,9 +133,7 @@ class AttendanceActivity : AppCompatActivity() {
         // Request notification permission on Android 13+ devices
 
 
-        bleCodeContainer = findViewById(R.id.bleCodeContainer)
-        etBleCode = findViewById(R.id.etBleCode)
-        btnSaveCode = findViewById(R.id.btnSaveCode)
+
         btnStart = findViewById(R.id.btnStart)
         btnStop = findViewById(R.id.btnStop)
         tvRole = findViewById(R.id.tvAttendanceRole)
@@ -133,9 +146,7 @@ class AttendanceActivity : AppCompatActivity() {
         role = intent.getStringExtra("role") ?: ""
         tvRole.text = getString(R.string.attendance_as, role)
 
-        if (hasSubmittedCodeThisSession) {
-            btnSaveCode.isEnabled = false
-        }
+
 
         loadMapping()
         loadBleCodeRollMap()
@@ -143,48 +154,12 @@ class AttendanceActivity : AppCompatActivity() {
 
         if (role == "teacher") {
             // Teacher UI: No BLE input
-            bleCodeContainer.visibility = View.GONE
             btnStart.isEnabled = true
         } else {
             // Student UI: show BLE input, disable start until BLE code saved
-            bleCodeContainer.visibility = View.VISIBLE
-            btnStart.isEnabled = false
+            btnStart.isEnabled = true  // Now enabled immediately for students
 
-            btnSaveCode.setOnClickListener {
-                // 1. Prevent duplicate submission in this session
-                if (hasSubmittedCodeThisSession) {
-                    Toast.makeText(this, "Code has already been submitted. Reopen app to change.", Toast.LENGTH_SHORT).show()
-                    return@setOnClickListener
-                }
 
-                val codeText = etBleCode.text.toString().trim()
-                val codeInt = codeText.toIntOrNull()
-                if (codeInt == null) {
-                    Toast.makeText(this, "Please enter a valid integer BLE code", Toast.LENGTH_SHORT).show()
-                    return@setOnClickListener
-                }
-
-                // Save raw code for BLE advertising as before
-                savedBleCode = codeInt
-                btnStart.isEnabled = true
-                Toast.makeText(this, "BLE code saved: $codeInt", Toast.LENGTH_SHORT).show()
-
-                // Transform to roll number via JSON map
-                val roll = codeToRollMap[codeInt]
-                if (roll == null) {
-                    Log.e("Attendance", "No roll mapping for BLE code $codeInt")
-                    Toast.makeText(this, "Unknown BLE code!", Toast.LENGTH_SHORT).show()
-                    return@setOnClickListener
-                }
-                Log.d("Attendance", "Mapped BLE code $codeInt → roll $roll")
-
-                // OneSignal: Tag this device with the roll number
-                OneSignal.User.addTag("roll", roll)
-
-                Toast.makeText(this, "Code submitted. Reopen app to change.", Toast.LENGTH_LONG).show()
-                btnSaveCode.isEnabled = false           // block further edits
-                hasSubmittedCodeThisSession = true      // memory lock
-            }
 
 
 
@@ -198,24 +173,29 @@ class AttendanceActivity : AppCompatActivity() {
             if (role == "teacher") {
                 startScanning() // ONLY scan
             } else if (role == "student") {
-                val code = savedBleCode
-                if (code == null) {
-                    Toast.makeText(this, "Please save your BLE code first", Toast.LENGTH_SHORT).show()
+                val rollNumber = intent.getStringExtra("rollNumber")
+                    ?: getSharedPreferences("user_prefs", MODE_PRIVATE).getString("user_roll", "")
+                    ?: ""
+
+                if (rollNumber.isEmpty()) {
+                    Toast.makeText(this, "Roll number not found. Please login again.", Toast.LENGTH_SHORT).show()
                     return@setOnClickListener
                 }
 
                 // Always stop any existing advertiser before starting a new one
                 advertiserHelper?.stopAdvertising()
                 advertiserHelper = null
-
                 advertiserHelper = BleAdvertiserHelper(this, serviceUuid)
-                advertiserHelper?.startAdvertising(
-                    payloadInt = code,
+
+                // Use new method with roll number and fingerprint
+                advertiserHelper?.startAdvertisingWithRollAndFingerprint(
+                    context = this,
+                    rollNumber = rollNumber,
                     onSuccess = {
                         runOnUiThread {
-                            tvRole.text = getString(R.string.advertising_code, code)
+                            tvRole.text = "Advertising roll: $rollNumber"
                         }
-                        Toast.makeText(this, "Advertising started for code $code", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "Advertising started for roll $rollNumber", Toast.LENGTH_SHORT).show()
                     },
                     onFailure = { errorCode ->
                         runOnUiThread {
@@ -224,6 +204,9 @@ class AttendanceActivity : AppCompatActivity() {
                     }
                 )
             }
+
+
+
 
             btnStart.isEnabled = false
             btnStop.isEnabled = true
@@ -245,7 +228,7 @@ class AttendanceActivity : AppCompatActivity() {
                 // Lock down UI while we keep scanning for late joiners
                 btnStart.isEnabled = false
                 btnStop.isEnabled  = false
-                bleCodeContainer.isEnabled = false
+
 
                 gracePeriodRolls.clear()
                 isInGracePeriod = true
@@ -293,7 +276,7 @@ class AttendanceActivity : AppCompatActivity() {
                         tvRole.text = getString(R.string.attendance_as, role)
                         btnStart.isEnabled = true
                         btnStop.isEnabled  = false
-                        bleCodeContainer.isEnabled = true
+
 
                         Toast.makeText(
                             this@AttendanceActivity,
@@ -309,9 +292,7 @@ class AttendanceActivity : AppCompatActivity() {
 
                 advertiserHelper?.stopAdvertising()
                 advertiserHelper = null
-                savedBleCode = null
-                btnSaveCode.isEnabled = true
-                hasSubmittedCodeThisSession = false
+
                 Toast.makeText(
                     this,
                     "Student stopped broadcasting.",
@@ -332,9 +313,7 @@ class AttendanceActivity : AppCompatActivity() {
                 if (role == "student") {
                     advertiserHelper?.stopAdvertising()
                     advertiserHelper = null
-                    savedBleCode = null
-                    btnSaveCode.isEnabled = true
-                    hasSubmittedCodeThisSession = false
+
                     Toast.makeText(this@AttendanceActivity, "BLE advertising stopped", Toast.LENGTH_SHORT).show()
                 }
                 finish()  // Close the activity
@@ -359,18 +338,36 @@ class AttendanceActivity : AppCompatActivity() {
         val text = jsonStream.bufferedReader().use { it.readText() }
         val obj = JSONObject(text)
         val map = mutableMapOf<Int, String>()
+        val hashMap = mutableMapOf<Int, String>()
+
         val keys = obj.keys()
         while (keys.hasNext()) {
             val key = keys.next()
             val code = key.toIntOrNull()
+            val rollNumber = obj.getString(key)
+
             if (code != null) {
-                map[code] = obj.getString(key)
+                map[code] = rollNumber
             }
+
+            // Create hash mapping for roll numbers
+            val rollHash = CustomDeviceFingerprint.getRollNumberHash(rollNumber)
+            hashMap[rollHash] = rollNumber
         }
+
         codeToRoll = map
+        rollHashToRollMap.putAll(hashMap)
+
+        Log.d("AttendanceActivity", "Loaded ${rollHashToRollMap.size} roll number hash mappings")
     }
 
+
+
+
     private fun startScanning() {
+        scannedStudents.clear()
+        seenAndroidIds.clear()
+        seenDeviceFingerprints.clear()
         presentRolls.clear()
         lastSeenMap.clear()
         adapter.clear()
@@ -378,25 +375,8 @@ class AttendanceActivity : AppCompatActivity() {
         scannerHelper = BleScannerHelper(
             context = this,
             serviceUuid = serviceUuid,
-            onDeviceFound = { code: Int ->
-                val roll = codeToRoll[code]
-                if (roll != null) {
-                    lastSeenMap[roll] = System.currentTimeMillis()
-
-                    if (isInGracePeriod) {
-                        gracePeriodRolls.add(roll)
-                    } else {
-                        val isNew = presentRolls.add(roll)
-                        if (isNew) {
-                            runOnUiThread {
-                                adapter.clear()
-                                adapter.addAll(presentRolls.sorted())
-                                adapter.notifyDataSetChanged()
-                                updateRollCount()
-                            }
-                        }
-                    }
-                }
+            onStudentFound = { payload ->
+                processStudentPayload(payload)
             },
             onScanFailure = { err: Int ->
                 runOnUiThread {
@@ -404,9 +384,71 @@ class AttendanceActivity : AppCompatActivity() {
                 }
             }
         )
+
         scannerHelper?.startScanning()
         startCleanup()
     }
+
+    private fun processStudentPayload(payload: StudentPayload) {
+        // Check if this student is already scanned (by roll hash)
+        if (scannedStudents.any { it.payload.rollNumberHash == payload.rollNumberHash }) {
+            Log.d("AttendanceActivity", "Student with roll hash ${payload.rollNumberHash} already scanned, ignoring")
+            return
+        }
+
+        // Get roll number from hash
+        val rollNumber = rollHashToRollMap[payload.rollNumberHash] ?: "Unknown-${payload.rollNumberHash}"
+
+        val student = ScannedStudent(payload, rollNumber)
+
+        // Primary Check: Android ID uniqueness
+        if (seenAndroidIds.contains(payload.androidIdHash)) {
+            student.isProxy = true
+            student.proxyReason = "Same Android ID detected"
+            Log.w("AttendanceActivity", "PROXY DETECTED: Android ID ${payload.androidIdHash} already seen for roll $rollNumber")
+        }
+
+        // Secondary Check: Device fingerprint uniqueness
+        if (seenDeviceFingerprints.contains(payload.deviceFingerprintHash)) {
+            student.isProxy = true
+            student.proxyReason += if (student.proxyReason.isEmpty()) "Same device fingerprint" else " + Same device fingerprint"
+            Log.w("AttendanceActivity", "PROXY DETECTED: Device fingerprint ${payload.deviceFingerprintHash} already seen for roll $rollNumber")
+        }
+
+        // Add to tracking sets
+        seenAndroidIds.add(payload.androidIdHash)
+        seenDeviceFingerprints.add(payload.deviceFingerprintHash)
+        scannedStudents.add(student)
+
+        // Also add to existing logic for compatibility
+        presentRolls.add(rollNumber)
+        lastSeenMap[rollNumber] = System.currentTimeMillis()
+
+        runOnUiThread {
+            updateStudentList()
+        }
+    }
+
+    private fun updateStudentList() {
+        val displayList = scannedStudents.map { student ->
+            val prefix = if (student.isProxy) "⭐ " else ""
+            val suffix = if (student.isProxy) " (${student.proxyReason})" else ""
+            "$prefix${student.rollNumber}$suffix"
+        }
+
+        adapter.clear()
+        adapter.addAll(displayList)
+        adapter.notifyDataSetChanged()
+        updateRollCount()
+    }
+
+    // Update the existing updateRollCount method
+    private fun updateRollCountWithProxy() {
+        val totalCount = scannedStudents.size
+        val proxyCount = scannedStudents.count { it.isProxy }
+        tvRollCount.text = "Students: $totalCount (${proxyCount} flagged)"
+    }
+
 
     private fun startCleanup() {
         handler.post(cleanupRunnable)

@@ -8,15 +8,26 @@ import android.os.Build
 import android.os.ParcelUuid
 import android.util.Log
 import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.*
 
+
+// ADD THIS DATA CLASS HERE (after imports, before class declaration)
+data class StudentPayload(
+    val rollNumberHash: Int,
+    val androidIdHash: Int,
+    val deviceFingerprintHash: Int,
+    val deviceAddress: String,
+    val rollNumber: String = ""
+)
 @SuppressLint("MissingPermission")
 class BleScannerHelper(
     private val context: Context,
     private val serviceUuid: UUID,
-    private val onDeviceFound: (Int) -> Unit,
+    private val onStudentFound: (StudentPayload) -> Unit,
     private val onScanFailure: (Int) -> Unit
 ) {
+
 
     private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as android.bluetooth.BluetoothManager
     private val scanner = bluetoothManager.adapter.bluetoothLeScanner ?: throw IllegalStateException("Bluetooth LE Scanner not available")
@@ -45,17 +56,23 @@ class BleScannerHelper(
             }
 
             val data = serviceData[ParcelUuid(serviceUuid)]
-            if (data != null && data.size >= 4) {
-                // Decode 4-byte little endian int representing BLE code
-                val code = ByteBuffer.wrap(data).order(java.nio.ByteOrder.LITTLE_ENDIAN).int
-                Log.d("BleScannerHelper", "Decoded BLE code: $code from device $deviceAddress")
+            if (data != null && data.size >= 12) { // Now expecting 12 bytes
+                val buffer = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
 
-                // Notify listener every time a scan is received for the device
-                onDeviceFound(code)
+                // Decode 12-byte payload
+                val rollNumberHash = buffer.int         // First 4 bytes: Roll number hash
+                val androidIdHash = buffer.int          // Next 4 bytes: Android ID hash
+                val deviceFingerprintHash = buffer.int  // Last 4 bytes: Device fingerprint hash
+
+                Log.d("BleScannerHelper", "Decoded - Roll hash: $rollNumberHash, AndroidID: $androidIdHash, Fingerprint: $deviceFingerprintHash from $deviceAddress")
+
+                val payload = StudentPayload(rollNumberHash, androidIdHash, deviceFingerprintHash, deviceAddress)
+                onStudentFound(payload)
             } else {
                 Log.d("BleScannerHelper", "Service data missing or too short (size=${data?.size ?: 0}) from $deviceAddress")
             }
         }
+
 
         override fun onScanFailed(errorCode: Int) {
             Log.e("BleScannerHelper", "BLE Scan failed with error code $errorCode")

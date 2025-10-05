@@ -25,6 +25,19 @@
         app:layout_constraintTop_toTopOf="parent"
         android:scaleType="centerCrop" />
 
+    <!-- Add this AFTER the profile ImageView and BEFORE the attendance button -->
+    <Button
+        android:id="@+id/btnLogout"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Logout"
+        android:layout_marginTop="16dp"
+        android:minHeight="48dp"
+        android:backgroundTint="@color/design_default_color_error"
+        app:layout_constraintStart_toEndOf="@id/ivProfile"
+        app:layout_constraintTop_toTopOf="@id/ivProfile"/>
+
+
     <!-- Home Role Info under profile photo -->
     <TextView
         android:id="@+id/tvHomeRole"
@@ -59,13 +72,5 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 
-    <Button
-        android:id="@+id/btnLogout"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/logout"
-        android:visibility="gone"
-        android:layout_alignParentTop="true"
-        android:layout_alignParentEnd="true"
-        android:layout_margin="16dp" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>
