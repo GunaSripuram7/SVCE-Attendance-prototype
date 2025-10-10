@@ -30,6 +30,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 import com.svce.attendance.utils.CustomDeviceFingerprint
 import com.svce.attendance.ble.StudentPayload
+import android.content.Intent
 
 
 
@@ -55,11 +56,11 @@ class AttendanceActivity : AppCompatActivity() {
     private lateinit var listView: ListView
     private lateinit var adapter: ArrayAdapter<String>
     private var isInGracePeriod = false
-    private val gracePeriodRolls = mutableSetOf<String>()
+
 
     private lateinit var codeToRollMap: Map<Int, String>
     // Set of currently present roll numbers
-    private val presentRolls = mutableSetOf<String>()
+
     // Add these new properties for proxy detection
     data class ScannedStudent(
         val payload: StudentPayload,
@@ -76,11 +77,7 @@ class AttendanceActivity : AppCompatActivity() {
 
 
     // Map to track last seen time of each roll number (millis)
-    private val lastSeenMap = mutableMapOf<String, Long>()
 
-    private val handler = Handler(Looper.getMainLooper())
-    private val cleanupIntervalMillis = 2000L  // run cleanup every 2 sec
-    private val timeoutMillis = 5000L          // remove entries if no seen for 5 sec
 
     private val permissions = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
         arrayOf(
@@ -97,31 +94,7 @@ class AttendanceActivity : AppCompatActivity() {
 
     private lateinit var role: String
 
-    private val cleanupRunnable = object : Runnable {
-        override fun run() {
-            val now = System.currentTimeMillis()
-            var listChanged = false
-            val iterator = lastSeenMap.iterator()
-            while (iterator.hasNext()) {
-                val entry = iterator.next()
-                if (now - entry.value > timeoutMillis) {
-                    iterator.remove()
-                    if (presentRolls.remove(entry.key)) {
-                        listChanged = true
-                    }
-                }
-            }
-            if (listChanged) {
-                runOnUiThread {
-                    adapter.clear()
-                    adapter.addAll(presentRolls.sorted())
-                    adapter.notifyDataSetChanged()
-                    updateRollCount()
-                }
-            }
-            handler.postDelayed(this, cleanupIntervalMillis)
-        }
-    }
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -141,6 +114,13 @@ class AttendanceActivity : AppCompatActivity() {
         adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, ArrayList())
         listView.adapter = adapter
         tvRollCount = findViewById(R.id.tvRollCount)
+
+        // Final list UI components
+        val tvScanningLabel = findViewById<TextView>(R.id.tvScanningLabel)
+
+
+
+
 
 
         role = intent.getStringExtra("role") ?: ""
@@ -181,6 +161,10 @@ class AttendanceActivity : AppCompatActivity() {
                     Toast.makeText(this, "Roll number not found. Please login again.", Toast.LENGTH_SHORT).show()
                     return@setOnClickListener
                 }
+                // Set OneSignal tag immediately when student enters attendance
+                OneSignal.User.addTag("roll", rollNumber)
+                Log.d("OneSignal", "Set roll tag early: $rollNumber")
+
 
                 // Always stop any existing advertiser before starting a new one
                 advertiserHelper?.stopAdvertising()
@@ -219,77 +203,25 @@ class AttendanceActivity : AppCompatActivity() {
 
             /********  TEACHER  *********/
             if (role == "teacher") {
+                Log.d("Attendance", "Teacher pressed STOP – finalizing attendance")
 
-                // Ignore double-taps while already in grace period
-                if (isInGracePeriod) return@setOnClickListener
+                // Stop BLE scan immediately
+                scannerHelper?.stopScanning()
 
-                Log.d("Attendance", "Teacher pressed STOP – entering grace period")
+                // Collect all non-proxy student roll numbers
+                val validRolls = scannedStudents
+                    .filter { !it.isProxy }
+                    .map { it.rollNumber }
 
-                // Lock down UI while we keep scanning for late joiners
-                btnStart.isEnabled = false
-                btnStop.isEnabled  = false
-
-
-                gracePeriodRolls.clear()
-                isInGracePeriod = true
-                Toast.makeText(
-                    this,
-                    "Grace period started (5 s)… collecting final attendance",
-                    Toast.LENGTH_SHORT
-                ).show()
-
-                /* Keep the scanner running during grace period.
-                   When the countdown finishes we stop scanning and finalise the list. */
-                object : CountDownTimer(5_000, 1_000) {
-
-                    override fun onTick(millisUntilFinished: Long) {
-                        // Update the subtitle so the teacher sees a live countdown
-                        tvRole.text = getString(
-                            R.string.grace_remaining,
-                            millisUntilFinished / 1_000
-                        )
-                        Log.d("Attendance",
-                            "Grace period countdown: ${millisUntilFinished / 1000}s")
-                    }
-
-                    override fun onFinish() {
-                        isInGracePeriod = false
-
-                        // Stop BLE scan and housekeeping timer
-                        scannerHelper?.stopScanning()
-                        stopCleanup()
-
-                        val finalSet = presentRolls + gracePeriodRolls
-                        exportSessionCsv(finalSet)    // <- writes dd-MM-yyyy-N.csv
-
-                        // Merge grace-period hits into the main set and refresh list
-                        presentRolls += gracePeriodRolls
-                        adapter.clear()
-                        adapter.addAll(presentRolls.sorted())
-                        adapter.notifyDataSetChanged()
-                        updateRollCount()
-
-                        Log.d("Attendance",
-                            "Grace ended. Final rolls: $presentRolls")
-
-                        // Restore UI
-                        tvRole.text = getString(R.string.attendance_as, role)
-                        btnStart.isEnabled = true
-                        btnStop.isEnabled  = false
-
-
-                        Toast.makeText(
-                            this@AttendanceActivity,
-                            "Attendance finalised (${presentRolls.size} students)",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    }
-                }.start()
-
+                // Launch the final attendance screen
+                val intent = Intent(this, FinalAttendanceActivity::class.java).apply {
+                    putStringArrayListExtra("finalRolls", ArrayList(validRolls))
+                }
+                startActivity(intent)
+                finish()
 
                 /********  STUDENT  *********/
             } else if (role == "student") {
-
                 advertiserHelper?.stopAdvertising()
                 advertiserHelper = null
 
@@ -300,10 +232,13 @@ class AttendanceActivity : AppCompatActivity() {
                 ).show()
 
                 btnStart.isEnabled = true
-                btnStop.isEnabled  = false
+                btnStop.isEnabled = false
                 tvRole.text = getString(R.string.attendance_as, role)
             }
         }
+
+
+
 
 
         btnStop.isEnabled = false
@@ -368,8 +303,6 @@ class AttendanceActivity : AppCompatActivity() {
         scannedStudents.clear()
         seenAndroidIds.clear()
         seenDeviceFingerprints.clear()
-        presentRolls.clear()
-        lastSeenMap.clear()
         adapter.clear()
 
         scannerHelper = BleScannerHelper(
@@ -386,48 +319,48 @@ class AttendanceActivity : AppCompatActivity() {
         )
 
         scannerHelper?.startScanning()
-        startCleanup()
+
+        if (role == "teacher") {
+            findViewById<TextView>(R.id.tvScanningLabel).visibility = View.VISIBLE
+        }
+        // Remove startCleanup() call
     }
 
-    private fun processStudentPayload(payload: StudentPayload) {
-        // Check if this student is already scanned (by roll hash)
-        if (scannedStudents.any { it.payload.rollNumberHash == payload.rollNumberHash }) {
-            Log.d("AttendanceActivity", "Student with roll hash ${payload.rollNumberHash} already scanned, ignoring")
-            return
-        }
 
+    private fun processStudentPayload(payload: StudentPayload) {
         // Get roll number from hash
         val rollNumber = rollHashToRollMap[payload.rollNumberHash] ?: "Unknown-${payload.rollNumberHash}"
 
-        val student = ScannedStudent(payload, rollNumber)
-
-        // Primary Check: Android ID uniqueness
-        if (seenAndroidIds.contains(payload.androidIdHash)) {
-            student.isProxy = true
-            student.proxyReason = "Same Android ID detected"
-            Log.w("AttendanceActivity", "PROXY DETECTED: Android ID ${payload.androidIdHash} already seen for roll $rollNumber")
+        // Check for existing students with same Android ID or Fingerprint
+        val existingStudentIndex = scannedStudents.indexOfFirst {
+            it.payload.androidIdHash == payload.androidIdHash ||
+                    it.payload.deviceFingerprintHash == payload.deviceFingerprintHash
         }
 
-        // Secondary Check: Device fingerprint uniqueness
-        if (seenDeviceFingerprints.contains(payload.deviceFingerprintHash)) {
-            student.isProxy = true
-            student.proxyReason += if (student.proxyReason.isEmpty()) "Same device fingerprint" else " + Same device fingerprint"
-            Log.w("AttendanceActivity", "PROXY DETECTED: Device fingerprint ${payload.deviceFingerprintHash} already seen for roll $rollNumber")
+        if (existingStudentIndex != -1) {
+            // Replace the existing student with the latest one (latest advertised roll)
+            val existingStudent = scannedStudents[existingStudentIndex]
+            Log.i("AttendanceActivity", "Replacing ${existingStudent.rollNumber} with $rollNumber (same device)")
+
+            scannedStudents[existingStudentIndex] = ScannedStudent(payload, rollNumber, isProxy = false)
+        } else {
+            // New unique device - add to list
+            val student = ScannedStudent(payload, rollNumber, isProxy = false)
+
+            // Track this device's identifiers
+            seenAndroidIds.add(payload.androidIdHash)
+            seenDeviceFingerprints.add(payload.deviceFingerprintHash)
+            scannedStudents.add(student)
+
+            Log.i("AttendanceActivity", "Added new student: $rollNumber")
         }
-
-        // Add to tracking sets
-        seenAndroidIds.add(payload.androidIdHash)
-        seenDeviceFingerprints.add(payload.deviceFingerprintHash)
-        scannedStudents.add(student)
-
-        // Also add to existing logic for compatibility
-        presentRolls.add(rollNumber)
-        lastSeenMap[rollNumber] = System.currentTimeMillis()
 
         runOnUiThread {
             updateStudentList()
         }
     }
+
+
 
     private fun updateStudentList() {
         val displayList = scannedStudents.map { student ->
@@ -450,16 +383,10 @@ class AttendanceActivity : AppCompatActivity() {
     }
 
 
-    private fun startCleanup() {
-        handler.post(cleanupRunnable)
-    }
-
-    private fun stopCleanup() {
-        handler.removeCallbacks(cleanupRunnable)
-    }
 
 
-    private fun exportSessionCsv(rolls: Collection<String>) {
+
+   /* private fun exportSessionCsv(rolls: Collection<String>) {
         val csvFile = createNextSessionCsv()
 
         FileWriter(csvFile).use { w ->
@@ -476,12 +403,12 @@ class AttendanceActivity : AppCompatActivity() {
 
         // NEW: send push notifications to all rolls in this session
         sendAttendancePush(csvFile)
-    }
+    } */
 
 
 
     // Call this at the END of exportSessionCsv()
-    private fun sendAttendancePush(csvFile: File) {
+    /*private fun sendAttendancePush(csvFile: File) {
 
         // 1. Read all roll numbers from CSV (skip header)
         val rolls = csvFile.readLines()
@@ -552,7 +479,7 @@ class AttendanceActivity : AppCompatActivity() {
             }
 
         }.start()
-    }
+    } */
 
 
     /**
@@ -611,7 +538,9 @@ class AttendanceActivity : AppCompatActivity() {
             .toMap()
     }
     private fun updateRollCount() {
-        val visibleCount = presentRolls.size
-        tvRollCount.text = "roll numbers $visibleCount visible"
+        val totalCount = scannedStudents.size
+        val validCount = scannedStudents.count { !it.isProxy }
+        tvRollCount.text = "Students: $totalCount total, $validCount valid"
     }
+
 }

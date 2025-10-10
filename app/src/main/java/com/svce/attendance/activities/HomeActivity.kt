@@ -59,7 +59,13 @@ class HomeActivity : AppCompatActivity() {
             tvHomeRole.text = "Student: $rollNumber"
         } else {
             tvHomeRole.text = getString(R.string.home_as, role)
+
+
         }
+
+        // Load persisted user data in case Intent extras are missing
+        loadUserDataFromPreferences()
+
         recycler.layoutManager = LinearLayoutManager(this)
 
         btnAttendance.text = if (role == "teacher") "Take Attendance" else "Give Attendance"
@@ -69,7 +75,10 @@ class HomeActivity : AppCompatActivity() {
                 if (role == "teacher" && mentorEmail.isNotEmpty()) {
                     putExtra("email", mentorEmail)
                 } else if (role == "student") {
-                    val rollNumber = intent.getStringExtra("rollNumber") ?: ""
+                    // Try Intent first, then SharedPreferences as fallback
+                    val rollNumber = this@HomeActivity.intent.getStringExtra("rollNumber")
+                        ?: getSharedPreferences("user_prefs", MODE_PRIVATE).getString("user_roll", "")
+                        ?: ""
                     putExtra("rollNumber", rollNumber)
                 }
             }
@@ -77,16 +86,23 @@ class HomeActivity : AppCompatActivity() {
         }
 
 
+
+
         ivProfile.setOnClickListener {
-            Toast.makeText(this, "Profile: $mentorEmail", Toast.LENGTH_SHORT).show()
-            val role = intent.getStringExtra("role") ?: "Unknown"
+            val role = this@HomeActivity.intent.getStringExtra("role") ?: "Unknown"
             if (role == "student") {
-                val rollNumber = intent.getStringExtra("rollNumber") ?: "N/A"
-                Toast.makeText(this, "Student: $rollNumber", Toast.LENGTH_SHORT).show()
+                // Try Intent first, then SharedPreferences as fallback
+                val rollNumber = this@HomeActivity.intent.getStringExtra("rollNumber")
+                    ?: getSharedPreferences("user_prefs", MODE_PRIVATE).getString("user_roll", "")
+                    ?: "N/A"
+                Toast.makeText(this, "Student: $rollNumber, Email: $mentorEmail", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(this, "Profile: $mentorEmail", Toast.LENGTH_SHORT).show()
             }
         }
+
+
+
 
         btnLogout.setOnClickListener {
             androidx.appcompat.app.AlertDialog.Builder(this)
@@ -131,6 +147,18 @@ class HomeActivity : AppCompatActivity() {
             recycler.visibility = View.GONE
         }
     }
+
+    private fun loadUserDataFromPreferences() {
+        val sharedPref = getSharedPreferences("user_prefs", MODE_PRIVATE)
+        val savedRole = sharedPref.getString("user_role", "") ?: ""
+        val savedEmail = sharedPref.getString("user_email", "") ?: ""
+        val savedRoll = sharedPref.getString("user_roll", "") ?: ""
+
+        if (savedRole == "student" && savedRoll.isNotEmpty()) {
+            tvHomeRole.text = "Student: $savedRoll"
+        }
+    }
+
 
     override fun onResume() {
         super.onResume()
