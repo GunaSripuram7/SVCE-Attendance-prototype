@@ -110,7 +110,7 @@ class LoginActivity : AppCompatActivity() {
 
         if (role == "student") {
             // For students: check if input is email or roll number
-            if (emailOrRoll.contains("@")) {
+            if (emailOrRoll.contains("@")) {    
                 // It's an email
                 loginWithEmail(emailOrRoll, password, role)
             } else {

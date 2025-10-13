@@ -73,6 +73,17 @@
         android:textSize="14sp"
         android:layout_marginTop="4dp" />
 
+    <!-- Refresh Button for Teacher -->
+    <Button
+        android:id="@+id/btnRefreshRolls"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="🔄 Refresh Roll Numbers"
+        android:layout_marginTop="8dp"
+        android:visibility="gone"
+        android:backgroundTint="#FF6B35" />
+
+
     <!-- Final List Section -->
     <TextView
         android:id="@+id/tvFinalLabel"

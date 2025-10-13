@@ -31,6 +31,10 @@ import java.util.*
 import com.svce.attendance.utils.CustomDeviceFingerprint
 import com.svce.attendance.ble.StudentPayload
 import android.content.Intent
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ktx.firestore
+import com.google.firebase.ktx.Firebase
+import kotlinx.coroutines.tasks.await
 
 
 
@@ -94,6 +98,10 @@ class AttendanceActivity : AppCompatActivity() {
 
     private lateinit var role: String
 
+    private lateinit var btnRefreshRolls: Button
+    private lateinit var db: FirebaseFirestore
+
+
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -115,6 +123,12 @@ class AttendanceActivity : AppCompatActivity() {
         listView.adapter = adapter
         tvRollCount = findViewById(R.id.tvRollCount)
 
+        btnRefreshRolls = findViewById(R.id.btnRefreshRolls)
+        db = Firebase.firestore
+
+
+
+
         // Final list UI components
         val tvScanningLabel = findViewById<TextView>(R.id.tvScanningLabel)
 
@@ -131,21 +145,26 @@ class AttendanceActivity : AppCompatActivity() {
         loadMapping()
         loadBleCodeRollMap()
 
+        // Auto-sync roll numbers for teachers (moved here after role is set)
+        if (role == "teacher") {
+            syncRollNumbersFromFirestore()
+        }
+
 
         if (role == "teacher") {
             // Teacher UI: No BLE input
             btnStart.isEnabled = true
+            btnRefreshRolls.visibility = View.VISIBLE
+
+            btnRefreshRolls.setOnClickListener {
+                syncRollNumbersFromFirestore()
+            }
         } else {
-            // Student UI: show BLE input, disable start until BLE code saved
-            btnStart.isEnabled = true  // Now enabled immediately for students
-
-
-
-
-
-
-
+            // Student UI
+            btnStart.isEnabled = true
+            btnRefreshRolls.visibility = View.GONE
         }
+
 
         btnStart.setOnClickListener {
             if (!checkPermissions()) return@setOnClickListener
@@ -269,32 +288,20 @@ class AttendanceActivity : AppCompatActivity() {
     } */
 
     private fun loadMapping() {
-        val jsonStream: InputStream = assets.open("BLEcode_rollnumber.json")
-        val text = jsonStream.bufferedReader().use { it.readText() }
-        val obj = JSONObject(text)
-        val map = mutableMapOf<Int, String>()
-        val hashMap = mutableMapOf<Int, String>()
+        val localFile = File(filesDir, "BLEcode_rollnumber.json")
 
-        val keys = obj.keys()
-        while (keys.hasNext()) {
-            val key = keys.next()
-            val code = key.toIntOrNull()
-            val rollNumber = obj.getString(key)
-
-            if (code != null) {
-                map[code] = rollNumber
-            }
-
-            // Create hash mapping for roll numbers
-            val rollHash = CustomDeviceFingerprint.getRollNumberHash(rollNumber)
-            hashMap[rollHash] = rollNumber
+        if (localFile.exists()) {
+            // Load from local file
+            loadMappingFromFile(localFile)
+        } else {
+            // Load from assets and copy to local
+            val jsonStream: InputStream = assets.open("BLEcode_rollnumber.json")
+            val text = jsonStream.bufferedReader().use { it.readText() }
+            localFile.writeText(text)
+            loadMappingFromFile(localFile)
         }
-
-        codeToRoll = map
-        rollHashToRollMap.putAll(hashMap)
-
-        Log.d("AttendanceActivity", "Loaded ${rollHashToRollMap.size} roll number hash mappings")
     }
+
 
 
 
@@ -543,4 +550,131 @@ class AttendanceActivity : AppCompatActivity() {
         tvRollCount.text = "Students: $totalCount total, $validCount valid"
     }
 
-}
+    private fun syncRollNumbersFromFirestore() {
+        btnRefreshRolls.isEnabled = false
+        btnRefreshRolls.text = "🔄 Syncing..."
+
+        lifecycleScope.launch {
+            try {
+                // Fetch all students with roll numbers from Firestore
+                val snapshot = db.collection("users")
+                    .whereEqualTo("role", "student")
+                    .whereNotEqualTo("rollNumber", "")
+                    .get()
+                    .await()
+
+                val firebaseRolls = snapshot.documents.mapNotNull { doc ->
+                    doc.getString("rollNumber")?.trim()?.takeIf { it.isNotEmpty() }
+                }.distinct()
+
+                Log.d("AttendanceActivity", "Retrieved ${firebaseRolls.size} roll numbers from Firebase")
+
+                // Update local JSON file
+                updateLocalJsonFile(firebaseRolls)
+
+            } catch (e: Exception) {
+                Log.e("AttendanceActivity", "Failed to sync roll numbers", e)
+                runOnUiThread {
+                    Toast.makeText(this@AttendanceActivity, "Sync failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            } finally {
+                runOnUiThread {
+                    btnRefreshRolls.isEnabled = true
+                    btnRefreshRolls.text = "🔄 Refresh Roll Numbers"
+                }
+            }
+        }
+    }
+
+    private fun updateLocalJsonFile(firebaseRolls: List<String>) {
+        try {
+            // Read current local JSON
+            val localFile = File(filesDir, "BLEcode_rollnumber.json")
+            val currentJson = if (localFile.exists()) {
+                JSONObject(localFile.readText())
+            } else {
+                // Copy from assets if local doesn't exist
+                val assetText = assets.open("BLEcode_rollnumber.json").bufferedReader().use { it.readText() }
+                localFile.writeText(assetText)
+                JSONObject(assetText)
+            }
+
+            // Get existing roll numbers
+            val existingRolls = mutableSetOf<String>()
+            val keys = currentJson.keys()
+            while (keys.hasNext()) {
+                val rollNumber = currentJson.getString(keys.next())
+                existingRolls.add(rollNumber)
+            }
+
+            // Find new roll numbers to add
+            val newRolls = firebaseRolls.filterNot { existingRolls.contains(it) }
+
+            if (newRolls.isNotEmpty()) {
+                // Find the highest existing key number
+                val maxKey = currentJson.keys().asSequence()
+                    .mapNotNull { it.toIntOrNull() }
+                    .maxOrNull() ?: 0
+
+                // Add new roll numbers
+                var nextKey = maxKey + 1
+                newRolls.forEach { rollNumber ->
+                    currentJson.put(nextKey.toString(), rollNumber)
+                    nextKey++
+                }
+
+                // Write updated JSON to local file
+                localFile.writeText(currentJson.toString(2))
+
+                // Reload mappings in memory
+                loadMappingFromFile(localFile)
+
+                Log.d("AttendanceActivity", "Added ${newRolls.size} new roll numbers to local JSON")
+                runOnUiThread {
+                    Toast.makeText(this@AttendanceActivity, "Added ${newRolls.size} new roll numbers", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                Log.d("AttendanceActivity", "No new roll numbers to add")
+                runOnUiThread {
+                    Toast.makeText(this@AttendanceActivity, "All roll numbers are up to date", Toast.LENGTH_SHORT).show()
+                }
+            }
+
+        } catch (e: Exception) {
+            Log.e("AttendanceActivity", "Failed to update local JSON", e)
+            runOnUiThread {
+                Toast.makeText(this@AttendanceActivity, "Failed to update local data", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun loadMappingFromFile(file: File) {
+        val text = file.readText()
+        val obj = JSONObject(text)
+        val map = mutableMapOf<Int, String>()
+        val hashMap = mutableMapOf<Int, String>()
+
+        val keys = obj.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val code = key.toIntOrNull()
+            val rollNumber = obj.getString(key)
+
+            if (code != null) {
+                map[code] = rollNumber
+            }
+
+            // Create hash mapping for roll numbers
+            val rollHash = CustomDeviceFingerprint.getRollNumberHash(rollNumber)
+            hashMap[rollHash] = rollNumber
+        }
+
+        codeToRoll = map
+        rollHashToRollMap.clear()
+        rollHashToRollMap.putAll(hashMap)
+
+        Log.d("AttendanceActivity", "Reloaded ${rollHashToRollMap.size} roll number hash mappings")
+    }
+
+}  // ← This is the final closing brace
+

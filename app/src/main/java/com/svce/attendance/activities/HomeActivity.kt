@@ -59,8 +59,6 @@ class HomeActivity : AppCompatActivity() {
             tvHomeRole.text = "Student: $rollNumber"
         } else {
             tvHomeRole.text = getString(R.string.home_as, role)
-
-
         }
 
         // Load persisted user data in case Intent extras are missing
