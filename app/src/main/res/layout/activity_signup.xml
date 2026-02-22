@@ -58,4 +58,26 @@
         android:minHeight="48dp"
         android:layout_marginTop="24dp"/>
 
+    <!-- Confirm Password Input -->
+    <EditText
+        android:id="@+id/etSignupConfirmPassword"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/confirm_password"
+        android:inputType="textPassword"
+        android:minHeight="48dp"
+        android:autofillHints="password"
+        android:layout_marginTop="16dp" />
+
+    <!-- Name Input -->
+    <EditText
+        android:id="@+id/etSignupName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/full_name"
+        android:inputType="textPersonName"
+        android:minHeight="48dp"
+        android:layout_marginTop="16dp" />
+
+
 </LinearLayout>

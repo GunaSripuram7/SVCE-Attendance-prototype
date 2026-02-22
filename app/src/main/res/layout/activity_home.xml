@@ -4,7 +4,13 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="32dp">
+    android:paddingLeft="32dp"
+    android:paddingRight="32dp"
+    android:paddingBottom="32dp"
+    android:paddingTop="?attr/actionBarSize"
+    android:fitsSystemWindows="true"
+
+    >
 
     <!-- Profile Image at Top-Left -->
     <ImageView
@@ -18,6 +24,19 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
         android:scaleType="centerCrop" />
+
+    <!-- Add this AFTER the profile ImageView and BEFORE the attendance button -->
+    <Button
+        android:id="@+id/btnLogout"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Logout"
+        android:layout_marginTop="16dp"
+        android:minHeight="48dp"
+        android:backgroundTint="@color/design_default_color_error"
+        app:layout_constraintStart_toEndOf="@id/ivProfile"
+        app:layout_constraintTop_toTopOf="@id/ivProfile"/>
+
 
     <!-- Home Role Info under profile photo -->
     <TextView
@@ -53,13 +72,5 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 
-    <Button
-        android:id="@+id/btnLogout"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/logout"
-        android:visibility="gone"
-        android:layout_alignParentTop="true"
-        android:layout_alignParentEnd="true"
-        android:layout_margin="16dp" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>

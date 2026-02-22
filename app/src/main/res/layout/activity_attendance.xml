@@ -1,97 +1,125 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
-    android:orientation="vertical"
-    android:gravity="center"
-    android:padding="32dp"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:paddingLeft="16dp"
+    android:paddingRight="16dp"
+    android:paddingBottom="16dp"
+    android:paddingTop="?attr/actionBarSize"
+    android:fitsSystemWindows="true">
 
+    <!-- BLE Code Entry Container -->
+
+
+    <!-- Role Display -->
     <TextView
         android:id="@+id/tvAttendanceRole"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Attendance"
-        android:textSize="24sp"
-        android:layout_marginBottom="24dp"/>
+        android:text="Attendance as: "
+        android:textSize="18sp"
+        android:layout_marginTop="16dp" />
 
+    <!-- Start/Stop Attendance -->
     <Button
         android:id="@+id/btnStart"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Start Attendance"/>
+        android:text="Start Attendance"
+        android:enabled="false"
+        android:layout_marginTop="16dp" />
 
     <Button
         android:id="@+id/btnStop"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Stop Attendance"
-        android:layout_marginTop="16dp"/>
+        android:enabled="false"
+        android:layout_marginTop="8dp" />
 
+    <!-- Status / Broadcast Countdown -->
     <TextView
-        android:id="@+id/tvGrace"
+        android:id="@+id/tvBroadcastCountdown"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text=""
-        android:textSize="18sp"
-        android:layout_marginTop="12dp"/>
+        android:text="Not broadcasting"
+        android:layout_marginTop="16dp" />
+
+    <!-- Real-time Scanning List (for teacher) -->
+    <TextView
+        android:id="@+id/tvScanningLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Live Scanning:"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:layout_marginTop="16dp"
+        android:visibility="gone" />
 
     <ListView
         android:id="@+id/listRolls"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
-        android:layout_marginTop="24dp"/>
-
-    <!-- Ping button is no longer used, keep it hidden for backward compatibility -->
-    <Button
-        android:id="@+id/btnPing"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Ping Students"
-        android:visibility="gone"
-        android:layout_marginTop="16dp"/>
-
-    <!-- Confirm button remains hidden as confirmation is automatic now -->
-    <Button
-        android:id="@+id/btnConfirm"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Confirm"
-        android:visibility="gone"/>
-
-    <!-- TextView to show 30-second broadcast countdown during confirmation phase -->
-    <TextView
-        android:id="@+id/tvBroadcastCountdown"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Broadcasting confirmation: 30"
-        android:textSize="20sp"
-        android:textColor="@android:color/holo_green_dark"
-        android:layout_marginTop="16dp"
-        android:visibility="gone"
-        android:layout_gravity="center"/>
-
-    <!-- Horizontal progress bar for 30-second broadcast -->
-    <ProgressBar
-        android:id="@+id/progressBroadcast"
-        style="?android:attr/progressBarStyleHorizontal"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:max="30"
-        android:visibility="gone"
+        android:layout_weight="0.5"
         android:layout_marginTop="8dp" />
 
-    <!-- Optional: Student confirmation status display -->
     <TextView
-        android:id="@+id/tvStudentConfirmation"
+        android:id="@+id/tvRollCount"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Attendance Confirmed!"
-        android:textSize="18sp"
-        android:textColor="@android:color/holo_green_dark"
-        android:layout_marginTop="16dp"
+        android:text="Students: 0 total, 0 valid"
+        android:textSize="14sp"
+        android:layout_marginTop="4dp" />
+
+    <!-- Refresh Button for Teacher -->
+    <Button
+        android:id="@+id/btnRefreshRolls"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="🔄 Refresh Roll Numbers"
+        android:layout_marginTop="8dp"
         android:visibility="gone"
-        android:layout_gravity="center"/>
+        android:backgroundTint="#FF6B35" />
+
+
+    <!-- Final List Section -->
+    <TextView
+        android:id="@+id/tvFinalLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Final Attendance:"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:layout_marginTop="16dp"
+        android:visibility="gone" />
+
+    <ListView
+        android:id="@+id/listFinalRolls"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="0.5"
+        android:layout_marginTop="8dp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/tvFinalCount"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Final count: 0 students"
+        android:textSize="14sp"
+        android:layout_marginTop="4dp"
+        android:visibility="gone" />
+
+    <Button
+        android:id="@+id/btnPingStudents"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="📱 Ping All Students"
+        android:layout_marginTop="12dp"
+        android:visibility="gone"
+        android:backgroundTint="@color/design_default_color_primary" />
+
 
 </LinearLayout>

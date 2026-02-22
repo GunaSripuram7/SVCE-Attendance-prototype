@@ -42,18 +42,7 @@
         />
 
     <!-- Roll Number (Student Only, set to GONE in code for teacher) -->
-    <EditText
-        android:id="@+id/etRollNumber"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="@string/roll_number"
-        android:inputType="text"
-        android:autofillHints="username"
-        android:layout_marginTop="16dp"
-        android:visibility="gone"
-        android:minHeight="48dp"
 
-        />
 
     <!-- Login Button -->
     <Button

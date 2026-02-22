@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fitsSystemWindows="true"
+    android:paddingTop="?attr/actionBarSize"
+    android:padding="16dp">
+
+    <TextView
+        android:id="@+id/tvFinalTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Final Attendance"
+        android:textSize="24sp"
+        android:layout_centerHorizontal="true"/>
+
+    <ListView
+        android:id="@+id/lvFinalRolls"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_below="@id/tvFinalTitle"
+        android:layout_above="@id/flButtons"
+        android:dividerHeight="1dp"
+        android:paddingTop="8dp"/>
+
+    <LinearLayout
+        android:id="@+id/flButtons"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal"
+        android:gravity="center_horizontal"
+        android:weightSum="2">
+
+        <Button
+            android:id="@+id/btnSaveFinal"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Save" />
+
+        <Button
+            android:id="@+id/btnPingFinal"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Ping" />
+    </LinearLayout>
+
+</RelativeLayout>

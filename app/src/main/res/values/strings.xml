@@ -20,6 +20,12 @@
     <string name="broadcast_countdown">Broadcasting confirmation: %1$d</string>
     <string name="present_count">Present: %1$d</string>
     <string name="logout">Logout</string>
+    <string name="advertising_code">Advertising code: %d</string>
+    <string name="grace_remaining">Grace period: %1$d s left</string>
+    <string name="confirm_password">Confirm Password</string>
+    <string name="full_name">Full Name</string>
+
+
 
 </resources>
 
