@@ -6,5 +6,6 @@ data class User(
     val role: String = "", // "teacher" or "student"
     val rollNumber: String = "", // only for students
     val name: String = "",
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val hasPaid: Boolean = false  // ADD THIS LINE
 )

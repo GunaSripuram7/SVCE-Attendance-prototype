@@ -58,6 +58,23 @@
 
         <activity android:name=".activities.FinalAttendanceActivity" />
 
+        <!-- Replace the old PaymentActivity block with this new one -->
+        <activity
+            android:name=".activities.PaymentActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar">
+
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:host="paypal"
+                    android:scheme="svceattendance" />
+            </intent-filter>
+
+        </activity>
 
     </application>
 

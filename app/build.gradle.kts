@@ -65,7 +65,16 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     // CSV reading/writing library
-    implementation("com.opencsv:opencsv:5.5.2")
+    implementation("com.opencsv:opencsv:5.5.2") {
+        exclude(group = "commons-logging", module = "commons-logging")
+    }
+
+
+
+    // PayPal Checkout SDK
+
+
+    // OkHttp (you might already have this)
 
 
 

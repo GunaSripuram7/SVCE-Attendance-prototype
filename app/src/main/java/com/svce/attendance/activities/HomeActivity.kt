@@ -18,6 +18,8 @@ import java.io.FileReader
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.ktx.Firebase
+import com.google.firebase.firestore.ktx.firestore
+import com.google.firebase.firestore.FirebaseFirestore
 
 
 class HomeActivity : AppCompatActivity() {
@@ -33,6 +35,10 @@ class HomeActivity : AppCompatActivity() {
     private var attendanceMatrix: List<Array<String>> = emptyList()
 
     private lateinit var auth: FirebaseAuth
+    private lateinit var db: FirebaseFirestore
+
+
+    // ADD THIS LINE: Declare db here
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -41,6 +47,28 @@ class HomeActivity : AppCompatActivity() {
 
         // Initialize Firebase Auth
         auth = Firebase.auth
+        // ADD THIS LINE: Initialize db here BEFORE using it
+        db = Firebase.firestore
+        // ADD THIS PAYMENT VERIFICATION BLOCK
+        val currentUser = auth.currentUser
+        if (currentUser != null) {
+
+            db.collection("users").document(currentUser.uid)
+                .get()
+                .addOnSuccessListener { document ->
+                    if (document.exists()) {
+                        val hasPaid = document.getBoolean("hasPaid") ?: false
+                        if (!hasPaid) {
+                            // User hasn't paid - block access
+                            val intent = Intent(this, PaymentActivity::class.java)
+                            startActivity(intent)
+                            finish()
+                            return@addOnSuccessListener
+                        }
+                    }
+                }
+        }
+        // END OF PAYMENT VERIFICATION BLOCK
 
 
         val role = intent.getStringExtra("role") ?: "Unknown"

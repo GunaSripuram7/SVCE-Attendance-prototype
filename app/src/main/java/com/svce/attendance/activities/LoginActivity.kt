@@ -173,6 +173,15 @@ class LoginActivity : AppCompatActivity() {
                     if (userData.role == expectedRole) {
                         // Correct role - save login state and proceed
                         saveLoginState(userData)
+                        // ADD THIS PAYMENT CHECK BLOCK
+                        if (!userData.hasPaid) {
+                            // User hasn't paid - redirect to payment
+                            val intent = Intent(this, PaymentActivity::class.java)
+                            startActivity(intent)
+                            finish()
+                            return@addOnSuccessListener
+                        }
+                        // END OF PAYMENT CHECK BLOCK
                         navigateToHome()
                     } else {
                         // Wrong role - show error and sign out

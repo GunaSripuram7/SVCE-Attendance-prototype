@@ -24,6 +24,7 @@
     <string name="grace_remaining">Grace period: %1$d s left</string>
     <string name="confirm_password">Confirm Password</string>
     <string name="full_name">Full Name</string>
+    <string name="payment_required">Payment Required</string>
 
 
 
